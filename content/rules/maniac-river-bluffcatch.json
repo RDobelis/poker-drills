@@ -1,0 +1,12 @@
+{
+  "id": "maniac-river-bluffcatch",
+  "placeholder": true,
+  "villainType": "Maniac",
+  "line": "SRP_HeroIP_FacingRiverBet",
+  "hero": { "minStrength": "SecondPair", "maxStrength": "TopPairGoodKicker" },
+  "draws": null,
+  "boardRequire": [],
+  "boardExclude": [],
+  "correct": "Call",
+  "reason": "Maniacs bluff the river far too often. Medium pairs are good enough to call."
+}

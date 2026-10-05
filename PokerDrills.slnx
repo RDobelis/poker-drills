@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/engine.tests/">
+    <Project Path="engine.tests/Engine.Tests.csproj" />
+  </Folder>
+  <Folder Name="/engine/">
+    <Project Path="engine/Engine.csproj" />
+  </Folder>
+  <Folder Name="/generator/">
+    <Project Path="generator/Generator.csproj" />
+  </Folder>
+</Solution>

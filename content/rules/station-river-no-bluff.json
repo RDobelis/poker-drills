@@ -1,0 +1,12 @@
+{
+  "id": "station-river-no-bluff",
+  "placeholder": true,
+  "villainType": "CallingStation",
+  "line": "SRP_HeroIP_RiverVillainChecks",
+  "hero": { "minStrength": "Air", "maxStrength": "Air" },
+  "draws": null,
+  "boardRequire": [],
+  "boardExclude": [],
+  "correct": "Check",
+  "reason": "Stations don't fold. Bluffing them burns money; give up with air."
+}

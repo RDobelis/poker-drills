@@ -1,0 +1,9 @@
+{
+  "id": "station-iso-trash",
+  "placeholder": true,
+  "villainType": "CallingStation",
+  "line": "Pre_IsoVsLimper",
+  "heroGroup": ["Trash"],
+  "correct": "Fold",
+  "reason": "Stations won't fold to an iso-raise, so trash hands can't win by bluffing. Fold."
+}

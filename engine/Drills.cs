@@ -1,0 +1,79 @@
+using System.Text.Encodings.Web;
+using System.Text.Json;
+
+namespace PokerDrills.Engine;
+
+public static class DrillKinds
+{
+    public const string Action = "action";
+    public const string Identify = "identify";
+}
+
+public sealed record Stacks(double Hero, double Villain);
+
+/// <summary>Classifier output stored with each drill so a coach can audit the mechanics.</summary>
+public sealed record DrillFacts(
+    string? HandClass,
+    IReadOnlyList<string> Draws,
+    IReadOnlyList<string> BoardFlags,
+    string? HighCard,
+    string? HandGroup,
+    string? Hand);
+
+public sealed record Drill
+{
+    public required string Id { get; init; }
+    public required string RuleId { get; init; }
+    public required string Kind { get; init; }
+    public required string Line { get; init; }
+    public required string VillainType { get; init; }
+    public required StatLine VillainStats { get; init; }
+    public string? HeroPosition { get; init; }
+    public string? VillainPosition { get; init; }
+    public Stacks? Stacks { get; init; }
+    public double? Pot { get; init; }
+    public double? ToCall { get; init; }
+    public required IReadOnlyList<string> ActionHistory { get; init; }
+    public required IReadOnlyList<string> HeroCards { get; init; }
+    public required IReadOnlyList<string> Board { get; init; }
+    public required string Question { get; init; }
+    public required IReadOnlyList<DrillOption> Options { get; init; }
+    public required string Correct { get; init; }
+    public required string Reason { get; init; }
+    public DrillFacts? Facts { get; init; }
+}
+
+public sealed record RuleSummary(
+    string Id,
+    string Kind,
+    string VillainType,
+    string Line,
+    string Conditions,
+    string Correct,
+    string Reason,
+    bool Placeholder);
+
+public sealed record TypeSummary(string Id, string Name, string Description, IReadOnlyDictionary<string, double[]> Ranges);
+
+/// <summary>Root of web/public/drills.json.</summary>
+public sealed record DrillFile(
+    int SchemaVersion,
+    ulong Seed,
+    IReadOnlyList<RuleSummary> Rules,
+    IReadOnlyList<TypeSummary> Types,
+    IReadOnlyList<Drill> Drills);
+
+public static class DrillJson
+{
+    public static JsonSerializerOptions Options { get; } = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping, // keep "–" etc. readable; file is static data
+        WriteIndented = false,
+    };
+
+    public static string Serialize(DrillFile file) => JsonSerializer.Serialize(file, Options);
+
+    public static DrillFile Deserialize(string json) =>
+        JsonSerializer.Deserialize<DrillFile>(json, Options) ?? throw new JsonException("Empty drill file");
+}

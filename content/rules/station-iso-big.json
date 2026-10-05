@@ -1,0 +1,9 @@
+{
+  "id": "station-iso-big",
+  "placeholder": true,
+  "villainType": "CallingStation",
+  "line": "Pre_IsoVsLimper",
+  "heroGroup": ["Premium", "Strong"],
+  "correct": "Iso5",
+  "reason": "Stations call iso-raises with too many hands. Make it big with strong hands."
+}

@@ -1,0 +1,12 @@
+{
+  "id": "station-flop-no-stab",
+  "placeholder": true,
+  "villainType": "CallingStation",
+  "line": "SRP_HeroIP_FlopVillainChecks",
+  "hero": { "minStrength": "Air", "maxStrength": "Air" },
+  "draws": "none",
+  "boardRequire": [],
+  "boardExclude": [],
+  "correct": "Check",
+  "reason": "Stations call flop bets with any piece. With no hand and no draw, check back."
+}

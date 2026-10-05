@@ -1,0 +1,12 @@
+{
+  "id": "maniac-flop-call-down",
+  "placeholder": true,
+  "villainType": "Maniac",
+  "line": "SRP_HeroOOP_FacingFlopCbet",
+  "hero": { "minStrength": "SecondPair", "maxStrength": "TopPairGoodKicker" },
+  "draws": null,
+  "boardRequire": [],
+  "boardExclude": [],
+  "correct": "Call",
+  "reason": "Maniacs c-bet nearly everything. Keep their bluffs in with medium pairs: call."
+}

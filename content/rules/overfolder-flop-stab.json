@@ -1,0 +1,12 @@
+{
+  "id": "overfolder-flop-stab",
+  "placeholder": true,
+  "villainType": "Overfolder",
+  "line": "SRP_HeroIP_FlopVillainChecks",
+  "hero": { "minStrength": "Air", "maxStrength": "Air" },
+  "draws": "none",
+  "boardRequire": ["Dry"],
+  "boardExclude": [],
+  "correct": "Bet33",
+  "reason": "Overfolders give up too often on dry boards. A small stab prints money."
+}

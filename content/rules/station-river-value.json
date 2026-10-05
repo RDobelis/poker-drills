@@ -1,0 +1,12 @@
+{
+  "id": "station-river-value",
+  "placeholder": true,
+  "villainType": "CallingStation",
+  "line": "SRP_HeroIP_RiverVillainChecks",
+  "hero": { "minStrength": "TopPairWeakKicker", "maxStrength": "FullHousePlus" },
+  "draws": null,
+  "boardRequire": [],
+  "boardExclude": ["FourToFlush", "FourToStraight"],
+  "correct": "Bet75",
+  "reason": "Stations call too wide with weaker pairs. Bet big for value."
+}

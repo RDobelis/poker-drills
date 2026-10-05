@@ -1,0 +1,12 @@
+{
+  "id": "nit-river-fold-one-pair",
+  "placeholder": true,
+  "villainType": "Nit",
+  "line": "SRP_HeroIP_FacingRiverBet",
+  "hero": { "minStrength": "TopPairWeakKicker", "maxStrength": "Overpair" },
+  "draws": null,
+  "boardRequire": [],
+  "boardExclude": [],
+  "correct": "Fold",
+  "reason": "A nit's big river bet is almost never a bluff. One pair is beaten; fold."
+}
