@@ -39,6 +39,21 @@ public class GeneratorTests
             Assert.Contains(d.Correct, d.Options.Select(o => o.Id));
             Assert.Equal(facts.HandClass?.ToString(), d.Facts!.HandClass);
 
+            // Hero's hand fits the preflop action (no 93o opened UTG).
+            var heroSeat = Enum.Parse<Position>(d.HeroPosition!);
+            var villainSeat = Enum.Parse<Position>(d.VillainPosition!);
+            switch (rule.Line)
+            {
+                case LineId.Pre_IsoVsLimper:
+                    break; // any hand: the preflop decision is the drill
+                case LineId.SRP_HeroOOP_FacingFlopCbet:
+                    Assert.True(content.Ranges.CanCallInBigBlind(villainSeat, hole), $"{d.Id}: BB calls {d.Facts.Hand} vs {villainSeat}");
+                    break;
+                default:
+                    Assert.True(content.Ranges.CanOpen(heroSeat, hole), $"{d.Id}: hero opens {d.Facts.Hand} from {heroSeat}");
+                    break;
+            }
+
             var villainTypes = StatSampler.TypesContaining(content.Types, d.VillainStats).Select(t => t.Id);
             Assert.Equal([d.VillainType], villainTypes);
             // Chip conservation. Postflop: 100 + 100 + dead SB. Preflop: 100 + 100 + both live blinds.

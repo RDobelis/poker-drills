@@ -66,7 +66,15 @@ export function Trainer({ data }: { data: DrillFile }) {
   }
 
   if (screen === 'summary' && session) {
-    return <Summary drills={sessionDrills} answers={session.answers} typeName={typeName} onDone={() => go('home')} />;
+    return (
+      <Summary
+        drills={sessionDrills}
+        answers={session.answers}
+        typeName={typeName}
+        onAnother={startOrResume}
+        onDone={() => go('home')}
+      />
+    );
   }
 
   return (

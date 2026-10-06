@@ -5,14 +5,24 @@ import { Trainer } from './pages/Trainer';
 
 const SCHEMA_VERSION = 1;
 
-function isReviewPath(): boolean {
-  const base = import.meta.env.BASE_URL.replace(/\/$/, '');
-  return window.location.pathname.replace(/\/+$/, '') === `${base}/review`;
+/** Coach page: "#review" works on any static host; "/review" also works on the dev server. */
+function isReviewRoute(): boolean {
+  return window.location.hash === '#review' || window.location.pathname.replace(/\/+$/, '').endsWith('/review');
 }
 
 export default function App() {
   const [data, setData] = useState<DrillFile | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [review, setReview] = useState(isReviewRoute);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      setReview(isReviewRoute());
+      window.scrollTo(0, 0);
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,5 +61,5 @@ export default function App() {
       </main>
     );
   }
-  return isReviewPath() ? <Review data={data} /> : <Trainer data={data} />;
+  return review ? <Review data={data} /> : <Trainer data={data} />;
 }

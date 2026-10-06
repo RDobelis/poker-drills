@@ -103,6 +103,19 @@ public class PlayerTypeAndContentTests
     }
 
     [Fact]
+    public void Preflop_ranges_are_validated()
+    {
+        const string json = """
+            { "open": { "UTG": "22+", "MP": "22+", "CO": "A2x", "BTN": "22+", "HJ": "22+" },
+              "bigBlindCall": { "UTG": "22+", "MP": "22+", "CO": "22+" } }
+            """;
+        var e = Assert.Throws<ContentException>(() => ContentLoader.ParseRanges(json));
+        Assert.Contains("open.CO", e.Message);
+        Assert.Contains("unknown position 'HJ'", e.Message);
+        Assert.Contains("missing a range for BTN", e.Message);
+    }
+
+    [Fact]
     public void Types_with_empty_range_are_rejected()
     {
         const string json = """

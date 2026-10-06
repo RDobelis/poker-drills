@@ -134,6 +134,37 @@ public class LineTemplateTests
     }
 
     [Fact]
+    public void TryBuild_only_seats_hands_that_fit_the_preflop_ranges()
+    {
+        var ranges = TestHelpers.Content.Ranges;
+        var rng = new Rng(9);
+        var junk = Cards("9s3d");
+        var aces = Cards("AsAd");
+        foreach (var line in new[] { LineId.SRP_HeroIP_FlopVillainChecks, LineId.SRP_HeroIP_RiverVillainChecks, LineId.SRP_HeroIP_FacingRiverBet })
+        {
+            var template = LineTemplate.For(line);
+            var board = template.BoardCardCount == 3 ? Flop : River;
+            for (var i = 0; i < 100; i++)
+            {
+                Assert.Null(template.TryBuild(rng, junk, board, ranges));
+                Assert.NotNull(template.TryBuild(rng, aces, board, ranges)); // AA opens from every seat
+            }
+        }
+
+        var cbet = LineTemplate.For(LineId.SRP_HeroOOP_FacingFlopCbet);
+        var suitedConnector = Cards("8h7h");
+        for (var i = 0; i < 100; i++)
+        {
+            Assert.Null(cbet.TryBuild(rng, aces, Flop, ranges)); // AA 3-bets preflop, never just calls
+            var spot = cbet.TryBuild(rng, suitedConnector, Flop, ranges);
+            if (spot is not null) Assert.True(ranges.CanCallInBigBlind(spot.VillainPosition, suitedConnector));
+        }
+
+        var iso = LineTemplate.For(LineId.Pre_IsoVsLimper);
+        Assert.NotNull(iso.TryBuild(rng, junk, [], ranges)); // the preflop decision is the drill
+    }
+
+    [Fact]
     public void Templates_reject_wrong_board_size()
     {
         Assert.Throws<ArgumentException>(() => LineTemplate.For(LineId.SRP_HeroIP_FlopVillainChecks).Build(new Rng(1), River));

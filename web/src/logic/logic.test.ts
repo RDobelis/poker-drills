@@ -208,6 +208,24 @@ describe('app state', () => {
     expect(recordAnswer(s, drill('other', 'z'), 'A', TODAY)).toBe(s);
   });
 
+  it('allows another session on the same day with fresh drills and an unchanged streak', () => {
+    const all = pool();
+    let s = startSession(emptyState(), buildSession(all, {}, TODAY, mulberry32(1)), TODAY);
+    const first = s.session!.drillIds;
+    for (const id of first) s = recordAnswer(s, all.find((d) => d.id === id)!, 'A', TODAY);
+    s = completeSession(s);
+
+    const second = buildSession(all, s.progress, TODAY, mulberry32(2));
+    s = startSession(s, second, TODAY);
+    for (const d of second) s = recordAnswer(s, d, 'A', TODAY);
+    s = completeSession(s);
+
+    expect(second).toHaveLength(SESSION_SIZE);
+    expect(second.some((d) => first.includes(d.id))).toBe(false); // answered drills are not due yet
+    expect(s.streak).toEqual({ current: 1, best: 1, lastDate: TODAY });
+    expect(Object.keys(s.progress)).toHaveLength(2 * SESSION_SIZE);
+  });
+
   it('bumps the streak once when the session completes', () => {
     let s = startSession(emptyState(), drills, TODAY);
     s = completeSession(s);

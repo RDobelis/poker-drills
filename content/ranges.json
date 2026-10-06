@@ -1,0 +1,16 @@
+{
+  "placeholder": true,
+  "description": "Hands hero can hold in the postflop lines. open: hands hero raises first in from each seat. bigBlindCall: hands hero flat-calls in the BB against an open from each seat (QQ+ and AK would 3-bet, so they are left out). Notation: 22+, 77-99, A2s+, KTo+, K9s-K6s, AK.",
+  "open": {
+    "UTG": "22+, A2s+, KTs+, QTs+, JTs, T9s, 98s, 87s, 76s, ATo+, KJo+, QJo",
+    "MP": "22+, A2s+, K9s+, Q9s+, J9s+, T9s, 98s, 87s, 76s, 65s, A9o+, KTo+, QTo+, JTo",
+    "CO": "22+, A2s+, K6s+, Q8s+, J8s+, T8s+, 97s+, 86s+, 75s+, 64s+, 54s, A7o+, A5o, K9o+, Q9o+, J9o+, T9o",
+    "BTN": "22+, A2s+, K2s+, Q5s+, J7s+, T7s+, 96s+, 85s+, 74s+, 63s+, 53s+, 43s, A2o+, K8o+, Q9o+, J9o+, T8o+, 98o, 87o, 76o"
+  },
+  "bigBlindCall": {
+    "UTG": "22-JJ, A2s-AQs, K9s+, Q9s+, J9s+, T8s+, 97s+, 86s+, 75s+, 64s+, 54s, ATo-AQo, KJo+, QJo",
+    "MP": "22-JJ, A2s-AQs, K7s+, Q8s+, J8s+, T7s+, 96s+, 85s+, 75s+, 64s+, 53s+, A9o-AQo, KTo+, QTo+, JTo",
+    "CO": "22-JJ, A2s-AQs, K4s+, Q6s+, J7s+, T7s+, 96s+, 85s+, 74s+, 63s+, 53s+, 43s, A5o-AQo, K9o+, Q9o+, J9o+, T9o, 98o",
+    "BTN": "22-JJ, A2s-AQs, K2s+, Q2s+, J4s+, T6s+, 95s+, 85s+, 74s+, 63s+, 52s+, 42s+, 32s, A2o-AQo, K7o+, Q8o+, J8o+, T8o+, 97o+, 87o, 76o, 65o"
+  }
+}

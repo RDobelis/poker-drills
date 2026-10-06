@@ -36,7 +36,7 @@ export function Home({ data, state, today, sessionToday, saveFailed, onStart, on
     <main className="app">
       <header className="home-header">
         <h1>Exploit Trainer</h1>
-        <p className="muted">Ten drills a day on punishing each player type.</p>
+        <p className="muted">Sessions of 10 drills on punishing each player type.</p>
       </header>
 
       <section className="card streak" aria-label="Streak">
@@ -47,20 +47,23 @@ export function Home({ data, state, today, sessionToday, saveFailed, onStart, on
         </div>
       </section>
 
-      {sessionToday?.completed ? (
+      {sessionToday?.completed && (
         <section className="card done">
           <p>
-            <b>Today's session is done:</b> {score}/{total} correct. Come back tomorrow.
+            <b>Last session:</b> {score}/{total} correct. Today's streak is secured.
           </p>
           <button type="button" className="btn" onClick={onShowSummary}>
-            See today's summary
+            See summary
           </button>
         </section>
-      ) : (
-        <button type="button" className="btn btn-primary btn-start" onClick={onStart}>
-          {sessionToday ? `Resume today's session (${answered}/${total})` : "Start today's session"}
-        </button>
       )}
+      <button type="button" className="btn btn-primary btn-start" onClick={onStart}>
+        {!sessionToday
+          ? "Start today's session"
+          : sessionToday.completed
+            ? 'Start another session'
+            : `Resume session (${answered}/${total})`}
+      </button>
       <p className="small muted center">
         {due} due for review · {fresh} new drills
       </p>
@@ -90,7 +93,7 @@ export function Home({ data, state, today, sessionToday, saveFailed, onStart, on
       {saveFailed && <p className="warning">This browser is blocking storage, so progress will not be saved.</p>}
 
       <footer className="footer">
-        <a href={`${import.meta.env.BASE_URL}review`}>Coach review</a>
+        <a href="#review">Coach review</a>
       </footer>
     </main>
   );

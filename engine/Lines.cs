@@ -67,6 +67,14 @@ public abstract class LineTemplate
     /// <summary>Randomises positions and earlier-street action within the template's limits.</summary>
     public abstract Spot Build(Rng rng, IReadOnlyList<Card> board);
 
+    /// <summary>
+    /// Like <see cref="Build(Rng, IReadOnlyList{Card})"/>, but the seating must fit hero's hand: hero only
+    /// opens hands in that seat's opening range and only flat-calls in the BB with hands in the calling range
+    /// against the opener. The seat is drawn uniformly first; null means it doesn't fit and the deal is rejected,
+    /// so weak hands mostly end up opened from late position, as in real games.
+    /// </summary>
+    public abstract Spot? TryBuild(Rng rng, IReadOnlyList<Card> hole, IReadOnlyList<Card> board, PreflopRanges ranges);
+
     public static IReadOnlyDictionary<LineId, LineTemplate> All { get; } = new LineTemplate[]
     {
         new IsoVsLimperLine(),
@@ -158,6 +166,10 @@ public sealed class IsoVsLimperLine : LineTemplate
 
     public override Spot Build(Rng rng, IReadOnlyList<Card> board) => Build(rng.Pick(Seatings), board);
 
+    /// <summary>Any hand: deciding what to do with it preflop is the drill itself.</summary>
+    public override Spot? TryBuild(Rng rng, IReadOnlyList<Card> hole, IReadOnlyList<Card> board, PreflopRanges ranges) =>
+        Build(rng, board);
+
     public Spot Build(Params p, IReadOnlyList<Card>? board = null)
     {
         RequireBoard(board ?? []);
@@ -195,6 +207,12 @@ public sealed class FlopVillainChecksLine : LineTemplate
     public override string Question => "Villain checks the flop. What do you do?";
 
     public override Spot Build(Rng rng, IReadOnlyList<Card> board) => Build(new Params(rng.Pick(HeroSeats)), board);
+
+    public override Spot? TryBuild(Rng rng, IReadOnlyList<Card> hole, IReadOnlyList<Card> board, PreflopRanges ranges)
+    {
+        var seat = rng.Pick(HeroSeats);
+        return ranges.CanOpen(seat, hole) ? Build(new Params(seat), board) : null;
+    }
 
     public Spot Build(Params p, IReadOnlyList<Card> board)
     {
@@ -234,6 +252,12 @@ public sealed class FacingFlopCbetLine : LineTemplate
     public override Spot Build(Rng rng, IReadOnlyList<Card> board) =>
         Build(new Params(rng.Pick(VillainSeats), rng.Pick(BetPercents)), board);
 
+    public override Spot? TryBuild(Rng rng, IReadOnlyList<Card> hole, IReadOnlyList<Card> board, PreflopRanges ranges)
+    {
+        var p = new Params(rng.Pick(VillainSeats), rng.Pick(BetPercents));
+        return ranges.CanCallInBigBlind(p.Villain, hole) ? Build(p, board) : null;
+    }
+
     public Spot Build(Params p, IReadOnlyList<Card> board)
     {
         RequireBoard(board);
@@ -270,6 +294,13 @@ public abstract class SrpToRiverLine : LineTemplate
 
     public override Spot Build(Rng rng, IReadOnlyList<Card> board) =>
         Build(new Params(rng.Pick(HeroSeats), SamplePlay(rng), SamplePlay(rng)), board);
+
+    public override Spot? TryBuild(Rng rng, IReadOnlyList<Card> hole, IReadOnlyList<Card> board, PreflopRanges ranges)
+    {
+        var seat = rng.Pick(HeroSeats);
+        if (!ranges.CanOpen(seat, hole)) return null;
+        return Build(new Params(seat, SamplePlay(rng), SamplePlay(rng)), board);
+    }
 
     public Spot Build(Params p, IReadOnlyList<Card> board)
     {

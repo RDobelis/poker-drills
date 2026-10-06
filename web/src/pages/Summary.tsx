@@ -7,6 +7,7 @@ interface Props {
   drills: Drill[];
   answers: Answer[];
   typeName: (typeId: string) => string;
+  onAnother: () => void;
   onDone: () => void;
 }
 
@@ -19,7 +20,7 @@ interface Group {
 
 const optionLabel = (d: Drill, id: string) => d.options.find((o) => o.id === id)?.label ?? id;
 
-export function Summary({ drills, answers, typeName, onDone }: Props) {
+export function Summary({ drills, answers, typeName, onAnother, onDone }: Props) {
   const byId = new Map(drills.map((d) => [d.id, d]));
   const score = answers.filter((a) => a.correct).length;
 
@@ -93,7 +94,10 @@ export function Summary({ drills, answers, typeName, onDone }: Props) {
         </section>
       )}
 
-      <button type="button" className="btn btn-primary" onClick={onDone}>
+      <button type="button" className="btn btn-primary" onClick={onAnother}>
+        Another 10 drills
+      </button>
+      <button type="button" className="btn" onClick={onDone}>
         Back to home
       </button>
     </main>

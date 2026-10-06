@@ -3,7 +3,6 @@
 Kept out of the prototype on purpose. Each one is a candidate for after the 20-student test.
 
 ## Students
-- "Practice 10 more" after today's session is done (today it's strictly 10 a day).
 - Per-rule accuracy on the home screen, not just per villain type.
 - Keyboard shortcuts (1-4) for answering on desktop.
 - Installable PWA / offline mode so the app survives flaky mobile connections.

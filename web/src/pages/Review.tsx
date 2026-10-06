@@ -80,7 +80,7 @@ export function Review({ data }: { data: DrillFile }) {
   return (
     <main className="app review">
       <header className="review-header">
-        <a href={import.meta.env.BASE_URL} className="small">
+        <a href={`${import.meta.env.BASE_URL}#`} className="small">
           ← Trainer
         </a>
         <h1>Coach review</h1>

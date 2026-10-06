@@ -10,7 +10,7 @@ public sealed class ContentException(IReadOnlyList<string> errors)
     public IReadOnlyList<string> Errors { get; } = errors;
 }
 
-public sealed record ContentSet(IReadOnlyList<PlayerType> Types, IReadOnlyList<Rule> Rules);
+public sealed record ContentSet(IReadOnlyList<PlayerType> Types, IReadOnlyList<Rule> Rules, PreflopRanges Ranges);
 
 /// <summary>
 /// Loads and validates /content. Validation is strict (unknown properties, unknown names,
@@ -34,11 +34,16 @@ public static partial class ContentLoader
     public static ContentSet Load(string contentDir)
     {
         var typesPath = Path.Combine(contentDir, "types.json");
+        var rangesPath = Path.Combine(contentDir, "ranges.json");
         var rulesDir = Path.Combine(contentDir, "rules");
-        if (!File.Exists(typesPath)) throw new ContentException([$"Missing {typesPath}"]);
+        foreach (var file in new[] { typesPath, rangesPath })
+        {
+            if (!File.Exists(file)) throw new ContentException([$"Missing {file}"]);
+        }
         if (!Directory.Exists(rulesDir)) throw new ContentException([$"Missing {rulesDir}"]);
 
         var types = ParseTypes(File.ReadAllText(typesPath));
+        var ranges = ParseRanges(File.ReadAllText(rangesPath));
 
         var errors = new List<string>();
         var rules = new List<Rule>();
@@ -58,7 +63,49 @@ public static partial class ContentLoader
         errors.AddRange(rules.GroupBy(r => r.Id).Where(g => g.Count() > 1).Select(g => $"Duplicate rule id '{g.Key}'"));
         if (errors.Count > 0) throw new ContentException(errors);
 
-        return new ContentSet(types, rules);
+        return new ContentSet(types, rules, ranges);
+    }
+
+    /// <summary>Seats hero can open from in the postflop lines, and openers hero can face from the BB.</summary>
+    private static readonly IReadOnlyList<Position> OpenSeats =
+        FlopVillainChecksLine.HeroSeats.Union(SrpToRiverLine.HeroSeats).ToList();
+
+    private static readonly IReadOnlyList<Position> BigBlindCallSeats = FacingFlopCbetLine.VillainSeats;
+
+    public static PreflopRanges ParseRanges(string json)
+    {
+        var dto = Deserialize<RangesDto>(json);
+        var errors = new List<string>();
+        var open = ParseSeatRanges(dto.Open, "open", OpenSeats, errors);
+        var call = ParseSeatRanges(dto.BigBlindCall, "bigBlindCall", BigBlindCallSeats, errors);
+        if (errors.Count > 0) throw new ContentException(errors.Select(e => "ranges.json: " + e).ToList());
+        return new PreflopRanges(open, call);
+    }
+
+    private static Dictionary<Position, HandRange> ParseSeatRanges(
+        Dictionary<string, string>? raw, string field, IEnumerable<Position> required, List<string> errors)
+    {
+        var result = new Dictionary<Position, HandRange>();
+        var seen = new HashSet<Position>();
+        foreach (var (key, text) in raw ?? [])
+        {
+            if (!TryParseName<Position>(key, out var seat))
+            {
+                errors.Add($"{field}: unknown position '{key}'");
+                continue;
+            }
+            seen.Add(seat);
+            try
+            {
+                result[seat] = HandRange.Parse(text);
+            }
+            catch (FormatException e)
+            {
+                errors.Add($"{field}.{key}: {e.Message}");
+            }
+        }
+        errors.AddRange(required.Where(s => !seen.Contains(s)).Select(s => $"{field}: missing a range for {s}"));
+        return result;
     }
 
     public static IReadOnlyList<PlayerType> ParseTypes(string json)
@@ -256,6 +303,14 @@ public static partial class ContentLoader
         public List<string>? BoardExclude { get; set; }
         public string? Correct { get; set; }
         public string? Reason { get; set; }
+    }
+
+    private sealed class RangesDto
+    {
+        public bool Placeholder { get; set; }
+        public string? Description { get; set; }
+        public Dictionary<string, string>? Open { get; set; }
+        public Dictionary<string, string>? BigBlindCall { get; set; }
     }
 
     private sealed class HeroDto

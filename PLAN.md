@@ -15,6 +15,7 @@ scheduling). Strategy content is placeholder.
   HandClassifier.cs          HandClass + DrawFlags
   BoardAnalyzer.cs           BoardFlags + HighCard
   PreflopGroups.cs           HandGroup
+  Ranges.cs                  HandRange (range notation parser), PreflopRanges
   Lines.cs                   Position, Stakes/Money, 5 line templates -> Spot
   PlayerTypes.cs             PlayerType, StatLine, sampling, range checks
   Rules.cs                   Rule model + matcher (SpotFacts)
@@ -24,6 +25,7 @@ scheduling). Strategy content is placeholder.
 /engine.tests                xUnit
 /generator                   console app: args -> DrillGenerator -> table + drills.json
 /content/types.json          player types
+/content/ranges.json         opening / BB calling ranges for the postflop lines
 /content/rules/*.json        one rule per file
 /web                         React + Vite + TS, reads /web/public/drills.json
 README.md, IDEAS.md
@@ -89,6 +91,13 @@ Raises facing a bet = raise to 3 x bet (capped at stack = all-in). Stacks report
 | SRP_HeroOOP_FacingFlopCbet | V in {UTG, MP, CO, BTN} opens, H=BB calls | H checks, V bets 33% or 75% | 5.5 + bet | Fold, Call, Raise |
 | SRP_HeroIP_RiverVillainChecks | as line 2 | flop & turn each: V checks, then H checks back (50%) or bets 33%/75% (25% each) and V calls; V checks river | computed | Check, Bet33, Bet75, Bet150 |
 | SRP_HeroIP_FacingRiverBet | as line 4 | ... V bets 75% river | computed + bet | Fold, Call, Raise |
+
+### Preflop ranges (`content/ranges.json`)
+In the postflop lines hero's hand must fit the preflop action. `open[seat]` = hands hero opens from
+UTG/MP/CO/BTN; `bigBlindCall[opener]` = hands hero flat-calls in the BB vs an open from that seat.
+`LineTemplate.TryBuild` draws the seat uniformly, then returns null (deal rejected) if the hand isn't in the
+range. Pre_IsoVsLimper keeps any hand (the preflop decision is the drill). Notation: `22+`, `77-99`,
+`A2s+`, `KTo+`, `K9s-K6s`, `AK`.
 
 ### Player types / stats
 Stats: VPIP, PFR, 3Bet, WTSD, AF, FoldToCbet. Integers except AF (0.1 steps). Sampling is uniform inside the

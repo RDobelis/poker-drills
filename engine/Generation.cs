@@ -33,7 +33,7 @@ public static class DrillGenerator
 
         foreach (var rule in content.Rules.OrderBy(r => r.Id, StringComparer.Ordinal))
         {
-            var (ruleDrills, attempts) = GenerateForRule(rule, content.Types, options);
+            var (ruleDrills, attempts) = GenerateForRule(rule, content, options);
             drills.AddRange(ruleDrills);
             produced.Add((rule.Id, DrillKinds.Action, ruleDrills.Count, attempts));
         }
@@ -59,9 +59,14 @@ public static class DrillGenerator
         return new GenerationResult(file, reports, conflicts);
     }
 
-    /// <summary>Deals random spots until <see cref="GeneratorOptions.PerRule"/> distinct matches or the attempt cap.</summary>
-    public static (List<Drill> Drills, int Attempts) GenerateForRule(Rule rule, IReadOnlyList<PlayerType> types, GeneratorOptions options)
+    /// <summary>
+    /// Deals random spots until <see cref="GeneratorOptions.PerRule"/> distinct matches or the attempt cap.
+    /// A deal is rejected when it doesn't match the rule, or when hero's hand doesn't fit the preflop
+    /// range for the sampled seat (e.g. 93o is never opened UTG).
+    /// </summary>
+    public static (List<Drill> Drills, int Attempts) GenerateForRule(Rule rule, ContentSet content, GeneratorOptions options)
     {
+        var types = content.Types;
         var template = LineTemplate.For(rule.Line);
         var villain = types.Single(t => t.Id == rule.VillainType);
         var rng = Rng.ForLabel(options.Seed, "rule:" + rule.Id);
@@ -81,7 +86,8 @@ public static class DrillGenerator
             var facts = SpotFacts.Analyze(hole, board, options.Classifier);
             if (!RuleMatcher.Matches(rule, villain.Id, rule.Line, facts)) continue;
 
-            var spot = template.Build(rng, board);
+            var spot = template.TryBuild(rng, hole, board, content.Ranges);
+            if (spot is null) continue;
             var key = SpotKey(hole, board, spot);
             if (!seenSpots.Add(key)) continue;
 
