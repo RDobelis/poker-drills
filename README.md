@@ -4,6 +4,8 @@ A coach writes short exploit **rules** (`content/rules/*.json`). A C# **generato
 hundreds of concrete drills (`web/public/drills.json`). A mobile-first **web app** serves sessions of 10
 drills with Leitner spaced repetition; progress lives in the browser (localStorage). No backend, no accounts.
 
+**Live:** https://rdobelis.github.io/poker-drills/ (coach page: https://rdobelis.github.io/poker-drills/#review)
+
 > The poker strategy in `content/` is **placeholder** content. The prototype is about correct mechanics:
 > card evaluation, hand/board classification, pot math, generation and scheduling.
 
@@ -55,6 +57,14 @@ Run from the repository root unless stated otherwise.
 
    `npm run build` writes a static site to `web/dist` (relative paths, coach page at `#review`), so any
    static host or sub-path works without server config. `npm run preview` serves the build locally.
+
+## Deployment (GitHub Pages)
+
+Every push to `main` runs [.github/workflows/pages.yml](.github/workflows/pages.yml): engine tests, drill
+generation from `content/` (same command and seed as above), web tests, build, and deploy to GitHub Pages.
+Editing a rule or `ranges.json` on GitHub is therefore enough to update the live site. A failing test or a
+rule conflict stops the deploy and the previous version stays live. The workflow can also be started by
+hand from the repository's Actions tab ("Deploy to GitHub Pages" → Run workflow).
 
 ## Generator output
 

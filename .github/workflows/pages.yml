@@ -1,0 +1,71 @@
+# Builds the trainer and publishes it to GitHub Pages on every push to main.
+# Drills are regenerated from /content, so editing a rule file on GitHub is enough to update the site.
+# Any failing test or rule conflict stops the deploy.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Engine tests
+        run: dotnet test
+
+      - name: Generate drills
+        run: dotnet run --project generator -- --content ./content --out ./web/public/drills.json --per-rule 200 --seed 42
+
+      - name: Report whether drills.json changed
+        run: |
+          if git diff --quiet -- web/public/drills.json; then
+            echo "drills.json matches the committed copy"
+          else
+            echo "::notice::drills.json was regenerated from content and differs from the committed copy"
+          fi
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Web tests and build
+        working-directory: web
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
