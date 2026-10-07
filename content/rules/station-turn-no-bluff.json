@@ -8,5 +8,5 @@
   "boardRequire": [],
   "boardExclude": [],
   "correct": "Check",
-  "reason": "A station won't fold the turn either. With no pair and no draw, check back and see the river for free."
+  "reason": "Stations don't fold the turn. With no pair and no draw, check back and see the river for free."
 }

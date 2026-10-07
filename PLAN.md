@@ -152,7 +152,10 @@ inside exactly one type's ranges (both for identify drills and for villain stats
 preflop rules use `heroGroup: [..]`. `draws`: `null` (any) or `"none"`. `boardRequire`/`boardExclude`: BoardFlags names.
 Loader validates: id == file name, known type/line/strengths/groups/flags, `correct` is an option of the line.
 
-Rule matching = same line AND same villain type AND hand/board conditions.
+Rule matching = same line AND same villain type AND hand/board conditions AND seating (`behind`, `others`) AND, for
+turn/river rules, `earlier` (`{ "flop": "bet" | "check", "turn": ... }`: hero's play on the streets before; only the
+line's `EarlierStreets` may be named). Generation checks `earlier` after the earlier streets are played; `HeroPlay`
+passes the plays so far when it picks a turn rule; the conflict checker reads them back from the drill's actions.
 
 `web/public/drills.json`
 ```jsonc

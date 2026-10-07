@@ -9,6 +9,16 @@ public enum DrawRequirement
     None,
 }
 
+/// <summary>What hero did on an earlier street of a turn or river spot (villain checked to hero there).</summary>
+public enum EarlierAction
+{
+    /// <summary>Hero checked back: the street checked through.</summary>
+    Check,
+
+    /// <summary>Hero bet and villain called.</summary>
+    Bet,
+}
+
 public readonly record struct StrengthRange(HandClass Min, HandClass Max)
 {
     public bool Contains(HandClass c) => c >= Min && c <= Max;
@@ -47,6 +57,9 @@ public sealed record Rule
 
     public bool HasOthersConditions => OthersRequire.Count > 0 || OthersExclude.Count > 0;
 
+    /// <summary>Turn and river rules: what hero must have done on earlier streets ("earlier": { "flop": "bet" }).</summary>
+    public IReadOnlyDictionary<Street, EarlierAction> Earlier { get; init; } = new Dictionary<Street, EarlierAction>();
+
     public required string Correct { get; init; }
     public required string Reason { get; init; }
 }
@@ -72,12 +85,19 @@ public sealed record SpotFacts(HandClass? HandClass, DrawFlags Draws, BoardFlags
 
 public static class RuleMatcher
 {
+    private static readonly IReadOnlyDictionary<Street, EarlierAction> Nothing = new Dictionary<Street, EarlierAction>();
+
     /// <summary>
-    /// A rule matches when line, villain type, every hand/board condition and the seating (who is left to act
-    /// behind hero, who else is still in the hand) all match.
+    /// A rule matches when line, villain type, every hand/board condition, the seating (who is left to act
+    /// behind hero, who else is still in the hand) and what hero did on earlier streets all match.
     /// </summary>
-    public static bool Matches(Rule rule, string villainType, LineId line, SpotFacts facts, Seating seating) =>
-        MatchesCards(rule, villainType, line, facts) && MatchesSeating(rule, seating);
+    public static bool Matches(Rule rule, string villainType, LineId line, SpotFacts facts, Seating seating,
+        IReadOnlyDictionary<Street, EarlierAction>? earlier = null) =>
+        MatchesCards(rule, villainType, line, facts) && MatchesSeating(rule, seating) && MatchesEarlier(rule, earlier ?? Nothing);
+
+    /// <summary>Hero did what the rule asks on each earlier street it names.</summary>
+    public static bool MatchesEarlier(Rule rule, IReadOnlyDictionary<Street, EarlierAction> earlier) =>
+        rule.Earlier.All(e => earlier.TryGetValue(e.Key, out var did) && did == e.Value);
 
     /// <summary>Required types are present and excluded types absent, behind hero and among the other opponents.</summary>
     public static bool MatchesSeating(Rule rule, Seating seating) =>

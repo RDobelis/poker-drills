@@ -11,8 +11,11 @@ public class PlayerTypeAndContentTests
     {
         var content = TestHelpers.Content;
         Assert.Equal(["Nit", "CallingStation", "Maniac", "Overfolder", "Reg"], content.Types.Select(t => t.Id));
-        Assert.Equal(19, content.Rules.Count);
-        Assert.Equal(LineId.SRP_HeroIP_TurnVillainChecks, content.Rules.Single(r => r.Id == "overfolder-turn-barrel").Line);
+        Assert.Equal(20, content.Rules.Count);
+        var barrel = content.Rules.Single(r => r.Id == "overfolder-turn-barrel");
+        Assert.Equal(LineId.SRP_HeroIP_TurnVillainChecks, barrel.Line);
+        Assert.Equal(new Dictionary<Street, EarlierAction> { [Street.Flop] = EarlierAction.Bet }, barrel.Earlier);
+        Assert.Equal(EarlierAction.Check, content.Rules.Single(r => r.Id == "overfolder-turn-stab").Earlier[Street.Flop]);
         Assert.Equal(["CallingStation"], content.Rules.Single(r => r.Id == "overfolder-3way-dry-stab").OthersExclude);
         var maniacBehind = content.Rules.Single(r => r.Id == "station-iso-playable-maniac-behind");
         Assert.Equal(["Maniac"], maniacBehind.BehindRequire);
@@ -115,6 +118,26 @@ public class PlayerTypeAndContentTests
     {
         var json = ValidRule.Replace("\"reason\": \"r\"", "\"reason\": \"r\", \"others\": { \"exclude\": [\"Maniac\"] }");
         Assert.Contains("heads-up", Assert.Throws<ContentException>(() => Parse(json)).Message);
+    }
+
+    [Fact]
+    public void Earlier_conditions_name_streets_before_the_decision()
+    {
+        // ValidRule is a river rule: flop and turn come before it.
+        var ok = Parse(ValidRule.Replace("\"reason\": \"r\"", "\"reason\": \"r\", \"earlier\": { \"flop\": \"bet\", \"Turn\": \"Check\" }"));
+        Assert.Equal(new Dictionary<Street, EarlierAction> { [Street.Flop] = EarlierAction.Bet, [Street.Turn] = EarlierAction.Check }, ok.Earlier);
+
+        string Error(string earlier, string? line = null)
+        {
+            var json = ValidRule.Replace("\"reason\": \"r\"", $"\"reason\": \"r\", \"earlier\": {earlier}");
+            if (line is not null) json = json.Replace("SRP_HeroIP_FacingRiverBet", line).Replace("\"Fold\"", "\"Check\"");
+            return Assert.Throws<ContentException>(() => Parse(json)).Message;
+        }
+        Assert.Contains("'river' is not an earlier street", Error("{ \"river\": \"bet\" }"));
+        Assert.Contains("must be \"check\"", Error("{ \"flop\": \"raise\" }"));
+        Assert.Contains("'turn' is not an earlier street of SRP_HeroIP_TurnVillainChecks (flop)",
+            Error("{ \"turn\": \"bet\" }", "SRP_HeroIP_TurnVillainChecks"));
+        Assert.Contains("has no earlier streets", Error("{ \"flop\": \"bet\" }", "SRP_HeroIP_FlopVillainChecks"));
     }
 
     [Fact]

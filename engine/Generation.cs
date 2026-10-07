@@ -164,12 +164,13 @@ public static class DrillGenerator
                 var played = later.FollowRules(spot.HeroPosition, board,
                     (street, seen) =>
                     {
-                        var decision = HeroPlay(street, hole, seen, villain.Id, content.Rules, options.Classifier);
+                        var decision = HeroPlay(street, hole, seen, villain.Id, content.Rules, options.Classifier, EarlierOf(earlier));
                         earlier.Add(decision);
                         return decision.Play;
                     },
                     () => pathRng.NextDouble() < callChance);
                 if (played is null) continue;
+                if (!RuleMatcher.MatchesEarlier(rule, EarlierOf(earlier))) continue; // e.g. a barrel rule needs a flop bet
                 spot = played;
             }
 
@@ -185,12 +186,15 @@ public static class DrillGenerator
 
     /// <summary>
     /// Rules a hand drill can end at: turn and river rules (villain checked to hero on every earlier street) whose
-    /// villain type also has a rule for one of those earlier streets, so the hand asks at least two decisions.
+    /// villain type also has a rule for one of those earlier streets, so the hand asks at least two decisions. That
+    /// earlier rule's answer must fit the anchor's <see cref="Rule.Earlier"/> condition for its street (a barrel rule
+    /// that needs a flop bet can't follow a flop rule that checks).
     /// </summary>
     public static IReadOnlyList<Rule> HandAnchors(string villainType, IReadOnlyList<Rule> rules) =>
         rules
             .Where(r => r.VillainType == villainType && LineTemplate.For(r.Line) is SrpLaterStreetLine later
-                && rules.Any(e => e.VillainType == villainType && later.EarlierStreets.Any(s => CheckedToHeroLine(s) == e.Line)))
+                && rules.Any(e => e.VillainType == villainType && later.EarlierStreets.Any(s => CheckedToHeroLine(s) == e.Line
+                    && (!r.Earlier.TryGetValue(s, out var needed) || needed == ActionOf(PlayFor(e.Correct))))))
             .OrderBy(r => r.Id, StringComparer.Ordinal)
             .ToList();
 
@@ -271,17 +275,19 @@ public static class DrillGenerator
 
     /// <summary>
     /// Hero's play on an earlier street when villain checks: the answer of the rule that covers that street
-    /// (<see cref="CheckedToHeroLine"/> rules for this villain type; first match by id), else the default.
+    /// (<see cref="CheckedToHeroLine"/> rules for this villain type, given what hero did on the streets before;
+    /// first match by id), else the default.
     /// </summary>
     public static StreetDecision HeroPlay(Street street, IReadOnlyList<Card> hole, IReadOnlyList<Card> boardSoFar,
-        string villainType, IReadOnlyList<Rule> rules, ClassifierOptions classifier)
+        string villainType, IReadOnlyList<Rule> rules, ClassifierOptions classifier,
+        IReadOnlyDictionary<Street, EarlierAction>? before = null)
     {
         var facts = SpotFacts.Analyze(hole, boardSoFar, classifier);
         var line = CheckedToHeroLine(street);
         var rule = rules
             .Where(r => r.Line == line)
             .OrderBy(r => r.Id, StringComparer.Ordinal)
-            .FirstOrDefault(r => RuleMatcher.Matches(r, villainType, r.Line, facts, Seating.Empty));
+            .FirstOrDefault(r => RuleMatcher.Matches(r, villainType, r.Line, facts, Seating.Empty, before));
         if (rule is not null) return new StreetDecision(street, PlayFor(rule.Correct), rule, $"rule {rule.Id}");
         var draws = facts.Draws == DrawFlags.None ? "" : " + " + string.Join(", ", DrawNames(facts.Draws));
         return new StreetDecision(street, DefaultPlay(facts), null, $"default for {facts.HandClass}{draws}");
@@ -305,6 +311,22 @@ public static class DrillGenerator
         "Bet75" => StreetPlay.Bet75Call,
         _ => StreetPlay.CheckThrough,
     };
+
+    private static EarlierAction ActionOf(StreetPlay play) => play == StreetPlay.CheckThrough ? EarlierAction.Check : EarlierAction.Bet;
+
+    /// <summary>What hero did on the streets played so far, for rules with <see cref="Rule.Earlier"/> conditions.</summary>
+    public static IReadOnlyDictionary<Street, EarlierAction> EarlierOf(IEnumerable<StreetDecision> played) =>
+        played.ToDictionary(d => d.Street, d => ActionOf(d.Play));
+
+    /// <summary>
+    /// The same, read back from a spot's action steps: hero's first check or bet on each postflop street hero has
+    /// acted on (at a turn or river decision these are exactly the earlier streets).
+    /// </summary>
+    public static IReadOnlyDictionary<Street, EarlierAction> EarlierOf(IEnumerable<DrillAction> actions, string? heroSeat) =>
+        actions
+            .Where(a => a.Seat == heroSeat && a.Street != nameof(Street.Preflop) && a.Kind is nameof(ActionKind.Check) or nameof(ActionKind.Bet))
+            .GroupBy(a => a.Street)
+            .ToDictionary(g => Enum.Parse<Street>(g.Key), g => g.First().Kind == nameof(ActionKind.Bet) ? EarlierAction.Bet : EarlierAction.Check);
 
     /// <summary>"Flop: bet 33%, called (rule overfolder-flop-stab)".</summary>
     public static string Describe(StreetDecision d)
@@ -423,6 +445,11 @@ public static class DrillGenerator
         if (rule.BehindExclude.Count > 0) parts.Add($"no {string.Join(" or ", rule.BehindExclude)} left to act behind you");
         if (rule.OthersRequire.Count > 0) parts.Add($"also in the hand: {string.Join(" and ", rule.OthersRequire)}");
         if (rule.OthersExclude.Count > 0) parts.Add($"no {string.Join(" or ", rule.OthersExclude)} also in the hand");
+        foreach (var (street, action) in rule.Earlier.OrderBy(e => e.Key))
+        {
+            var name = street.ToString().ToLowerInvariant();
+            parts.Add(action == EarlierAction.Bet ? $"you bet the {name} and got called" : $"the {name} checked through");
+        }
         return string.Join("; ", parts);
     }
 
@@ -575,18 +602,19 @@ public static class ConflictChecker
 
         foreach (var drill in drills)
         {
-            foreach (var (ruleId, line, correct, boardCodes, seating) in Decisions(drill))
+            foreach (var (ruleId, line, correct, boardCodes, seating, actions) in Decisions(drill))
             {
                 if (!rulesByLine.TryGetValue(line, out var candidates)) continue;
 
                 var hole = drill.HeroCards.Select(Card.Parse).ToArray();
                 var board = boardCodes.Select(Card.Parse).ToArray();
                 var facts = SpotFacts.Analyze(hole, board, options);
+                var earlier = DrillGenerator.EarlierOf(actions, drill.HeroPosition);
 
                 foreach (var other in candidates)
                 {
                     if (other.Id == ruleId || other.Correct == correct) continue;
-                    if (!RuleMatcher.Matches(other, drill.VillainType, line, facts, seating)) continue;
+                    if (!RuleMatcher.Matches(other, drill.VillainType, line, facts, seating, earlier)) continue;
 
                     var key = (ruleId, other.Id);
                     found[key] = found.TryGetValue(key, out var f)
@@ -605,15 +633,17 @@ public static class ConflictChecker
     }
 
     /// <summary>What a drill asks: an action drill's one decision, or each step of a hand (heads-up, nobody behind).</summary>
-    private static IEnumerable<(string RuleId, LineId Line, string Correct, IReadOnlyList<string> Board, Seating Seating)> Decisions(Drill drill)
+    private static IEnumerable<(string RuleId, LineId Line, string Correct, IReadOnlyList<string> Board, Seating Seating,
+        IReadOnlyList<DrillAction> Actions)> Decisions(Drill drill)
     {
         if (drill.Kind == DrillKinds.Action)
         {
-            yield return (drill.RuleId, Enum.Parse<LineId>(drill.Line), drill.Correct, drill.Board, DrillGenerator.SeatingOf(drill));
+            yield return (drill.RuleId, Enum.Parse<LineId>(drill.Line), drill.Correct, drill.Board, DrillGenerator.SeatingOf(drill),
+                drill.Actions);
         }
         foreach (var step in drill.Steps ?? [])
         {
-            yield return (step.RuleId, Enum.Parse<LineId>(step.Line), step.Correct, step.Board, Seating.Empty);
+            yield return (step.RuleId, Enum.Parse<LineId>(step.Line), step.Correct, step.Board, Seating.Empty, step.Actions);
         }
     }
 }

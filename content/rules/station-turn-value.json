@@ -8,5 +8,5 @@
   "boardRequire": [],
   "boardExclude": ["FourToFlush", "FourToStraight"],
   "correct": "Bet75",
-  "reason": "Stations call the turn with any pair. Keep betting big with top pair good kicker or better."
+  "reason": "Stations call the turn with any pair. Bet big with top pair good kicker or better."
 }

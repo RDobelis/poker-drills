@@ -1,0 +1,13 @@
+{
+  "id": "overfolder-turn-stab",
+  "placeholder": true,
+  "villainType": "Overfolder",
+  "line": "SRP_HeroIP_TurnVillainChecks",
+  "hero": { "minStrength": "Air", "maxStrength": "Air" },
+  "draws": null,
+  "boardRequire": [],
+  "boardExclude": [],
+  "earlier": { "flop": "check" },
+  "correct": "Bet33",
+  "reason": "When the flop checks through, an overfolder rarely has anything worth defending on the turn. A small stab with air takes the pot often enough."
+}

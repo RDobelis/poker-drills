@@ -232,6 +232,8 @@ public static partial class ContentLoader
         if (template is { CanHaveOtherOpponents: false } && (othersRequire.Count > 0 || othersExclude.Count > 0))
             errors.Add($"others: {template.Id} is heads-up; others conditions apply to multiway spots (Pre_IsoVsLimper, SRP_3Way_FlopCheckedToHero)");
 
+        var earlier = ParseEarlier(dto.Earlier, template, errors);
+
         if (template is not null && (dto.Correct is null || !template.OptionIds.Contains(dto.Correct)))
             errors.Add($"correct '{dto.Correct}' is not an option of {template.Id}: {string.Join(", ", template.OptionIds)}");
         if (string.IsNullOrWhiteSpace(dto.Reason)) errors.Add("reason is required");
@@ -253,9 +255,37 @@ public static partial class ContentLoader
             BehindExclude = behindExclude,
             OthersRequire = othersRequire,
             OthersExclude = othersExclude,
+            Earlier = earlier,
             Correct = dto.Correct!,
             Reason = dto.Reason!.Trim(),
         };
+    }
+
+    /// <summary>
+    /// "earlier": { "flop": "bet", "turn": "check" }: what hero did on streets before a turn or river decision.
+    /// Only those lines have earlier streets, and only the streets before their decision can be named.
+    /// </summary>
+    private static Dictionary<Street, EarlierAction> ParseEarlier(Dictionary<string, string>? raw, LineTemplate? template, List<string> errors)
+    {
+        var result = new Dictionary<Street, EarlierAction>();
+        if (raw is null || raw.Count == 0 || template is null) return result;
+        if (template is not SrpLaterStreetLine later)
+        {
+            errors.Add($"earlier: {template.Id} has no earlier streets; earlier conditions apply to the turn and river lines "
+                + "(SRP_HeroIP_TurnVillainChecks, SRP_HeroIP_RiverVillainChecks, SRP_HeroIP_FacingRiverBet)");
+            return result;
+        }
+        var streets = string.Join(", ", later.EarlierStreets.Select(s => s.ToString().ToLowerInvariant()));
+        foreach (var (key, value) in raw)
+        {
+            if (!TryParseName<Street>(key, out var street) || !later.EarlierStreets.Contains(street))
+                errors.Add($"earlier: '{key}' is not an earlier street of {template.Id} ({streets})");
+            else if (!TryParseName<EarlierAction>(value, out var action))
+                errors.Add($"earlier.{key}: '{value}' must be \"check\" (checked through) or \"bet\" (hero bet, villain called)");
+            else
+                result[street] = action;
+        }
+        return result;
     }
 
     /// <summary>Player type names (case-insensitive) mapped to their ids; unknown names are errors.</summary>
@@ -342,6 +372,7 @@ public static partial class ContentLoader
         public List<string>? BoardExclude { get; set; }
         public BehindDto? Behind { get; set; }
         public BehindDto? Others { get; set; }
+        public Dictionary<string, string>? Earlier { get; set; }
         public string? Correct { get; set; }
         public string? Reason { get; set; }
     }

@@ -80,7 +80,8 @@ nit-3bet-fold                       action       200      1633          0  -
 nit-river-fold-one-pair             action       200     11199          0  -
 overfolder-3way-dry-stab            action       200     11744          0  -
 overfolder-flop-stab                action       200      5710          0  -
-overfolder-turn-barrel              action       200      1851          0  -
+overfolder-turn-barrel              action       200     14595          0  -
+overfolder-turn-stab                action       200      2201          0  -
 station-3way-no-stab                action       200      1058          0  -
 station-flop-no-stab                action       200      1657          0  -
 station-iso-big                     action       200      6589          0  -
@@ -98,7 +99,7 @@ identify-overfolder                 identify     100       100          -  -
 identify-reg                        identify     100       100          -  -
 hands-calling-station               hand         200     11158          -  -
 hands-overfolder                    hand          50      6237          -  -
-Wrote 4550 drills ... Conflicts: 0. Warnings: 0.
+Wrote 4750 drills ... Conflicts: 0. Warnings: 0.
 ```
 
 Turn and river rules need more attempts than flop rules because a deal is dropped when villain would have folded
@@ -114,7 +115,7 @@ conflict checker re-analyses every generated drill from its cards against every 
 line; a match with a different `correct` answer is a conflict: both rule ids and an example are printed,
 the process exits with code 1 and `drills.json` is not written.
 
-The 19 placeholder rules produce **0 conflicts**. Beyond the brief's exclusions (`station-river-value` already
+The 20 placeholder rules produce **0 conflicts**. Beyond the brief's exclusions (`station-river-value` already
 excludes `FourToFlush` and `FourToStraight`), `station-iso-playable` excludes a maniac behind so it doesn't clash
 with `station-iso-playable-maniac-behind`. Every decision of every hand drill is checked the same way. Rules for different villain
 types (for example `overfolder-flop-stab` and `station-flop-no-stab`) never conflict because the villain
@@ -141,6 +142,10 @@ type is part of the match.
   - Multiway spots, optional: `"others": { "require": [...], "exclude": [...] }` works the same way for the
     other opponents still in the hand besides villain (extra limpers, the 3-way small blind), e.g.
     `overfolder-3way-dry-stab` excludes a station in the small blind.
+  - Turn and river rules, optional: `"earlier": { "flop": "bet", "turn": "check" }` requires what hero did on
+    the streets before ("bet" = hero bet and villain called, "check" = it checked through). Use it when the answer
+    or the reason depends on the line: `overfolder-turn-barrel` ("fire again") needs a flop bet,
+    `overfolder-turn-stab` covers the flop checking through.
   - `correct` must be one of the line's options.
 
 The loader is strict: unknown properties (typos), unknown names, a `correct` answer the line does not

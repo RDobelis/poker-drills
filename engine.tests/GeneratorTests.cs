@@ -31,7 +31,8 @@ public class GeneratorTests
             CardList.EnsureDistinct(hole.Concat(board));
             var facts = SpotFacts.Analyze(hole, board, ClassifierOptions.Default);
             var seating = DrillGenerator.SeatingOf(d);
-            Assert.True(RuleMatcher.Matches(rule, d.VillainType, rule.Line, facts, seating), $"{d.Id} does not match {rule.Id}");
+            var earlier = DrillGenerator.EarlierOf(d.Actions, d.HeroPosition);
+            Assert.True(RuleMatcher.Matches(rule, d.VillainType, rule.Line, facts, seating, earlier), $"{d.Id} does not match {rule.Id}");
             Assert.Equal(seating.Behind.Count, d.Behind.Count);
             Assert.Equal(seating.Others.Count, d.Others.Count);
             Assert.Equal(template.CanHavePlayersBehind, d.Behind.Count > 0); // the blinds are left to act in iso spots
@@ -231,11 +232,13 @@ public class GeneratorTests
             var hole = d.HeroCards.Select(Card.Parse).ToArray();
             var board = d.Board.Select(Card.Parse).ToArray();
             var pot = Stakes.SrpPot;
+            var before = new Dictionary<Street, EarlierAction>();
             foreach (var street in template.EarlierStreets)
             {
                 var seen = board.Take(LineTemplate.BoardCountAt(street)).ToList();
-                var expected = DrillGenerator.HeroPlay(street, hole, seen, d.VillainType, content.Rules, ClassifierOptions.Default).Play;
+                var expected = DrillGenerator.HeroPlay(street, hole, seen, d.VillainType, content.Rules, ClassifierOptions.Default, before).Play;
                 var heroAction = d.Actions.Single(a => a.Seat == d.HeroPosition && a.Street == street.ToString());
+                before[street] = expected == StreetPlay.CheckThrough ? EarlierAction.Check : EarlierAction.Bet;
                 if (expected == StreetPlay.CheckThrough)
                 {
                     Assert.Equal("Check", heroAction.Kind);
@@ -258,8 +261,10 @@ public class GeneratorTests
         var air = Card.ParseMany("9c4s");
         var dryFlop = Card.ParseMany("Ks7d2h");
         var options = ClassifierOptions.Default;
-        StreetDecision Play(Street street, IReadOnlyList<Card> hole, IReadOnlyList<Card> board, string type) =>
-            DrillGenerator.HeroPlay(street, hole, board, type, rules, options);
+        StreetDecision Play(Street street, IReadOnlyList<Card> hole, IReadOnlyList<Card> board, string type,
+            EarlierAction? flop = null) =>
+            DrillGenerator.HeroPlay(street, hole, board, type, rules, options,
+                flop is { } f ? new Dictionary<Street, EarlierAction> { [Street.Flop] = f } : null);
 
         var stab = Play(Street.Flop, air, dryFlop, "Overfolder");
         Assert.Equal((StreetPlay.Bet33Call, "overfolder-flop-stab"), (stab.Play, stab.Rule?.Id));
@@ -274,9 +279,32 @@ public class GeneratorTests
         Assert.Equal(StreetPlay.Bet33Call, Play(Street.Flop, Card.ParseMany("Ah5h"), Card.ParseMany("Kh9h2c"), "Nit").Play); // flush draw
         Assert.Equal(StreetPlay.Bet75Call, Play(Street.Turn, Card.ParseMany("AsKd"), Card.ParseMany("Kc7h2s9d"), "Nit").Play); // TPGK
 
-        // Turn rules decide the turn: an overfolder gets barrelled with air.
-        var barrel = Play(Street.Turn, air, Card.ParseMany("Ks7d2h3c"), "Overfolder");
+        // Turn rules decide the turn, and what happened on the flop picks the rule: an overfolder who called a flop
+        // bet gets barrelled big, one who checked the flop through gets a small stab.
+        var turn = Card.ParseMany("Ks7d2h3c");
+        var barrel = Play(Street.Turn, air, turn, "Overfolder", EarlierAction.Bet);
         Assert.Equal((StreetPlay.Bet75Call, "overfolder-turn-barrel"), (barrel.Play, barrel.Rule?.Id));
+        var stabTurn = Play(Street.Turn, air, turn, "Overfolder", EarlierAction.Check);
+        Assert.Equal((StreetPlay.Bet33Call, "overfolder-turn-stab"), (stabTurn.Play, stabTurn.Rule?.Id));
+        Assert.Null(Play(Street.Turn, air, turn, "Overfolder").Rule); // flop unknown: neither rule applies
+    }
+
+    [Fact]
+    public void Turn_rules_about_the_flop_only_get_spots_where_hero_did_that()
+    {
+        var drills = FullRun.Value.File.Drills;
+        string HeroOnFlop(Drill d) => d.Actions.Single(a => a.Seat == d.HeroPosition && a.Street == "Flop").Kind;
+        var barrels = drills.Where(d => d.RuleId == "overfolder-turn-barrel").ToList();
+        var stabs = drills.Where(d => d.RuleId == "overfolder-turn-stab").ToList();
+        Assert.True(barrels.Count >= 150 && stabs.Count >= 150);
+        Assert.All(barrels, d => Assert.Equal("Bet", HeroOnFlop(d)));
+        Assert.All(stabs, d => Assert.Equal("Check", HeroOnFlop(d)));
+        Assert.All(drills.Where(d => d.Steps is not null).SelectMany(h => h.Steps!).Where(s => s.RuleId == "overfolder-turn-barrel"),
+            s => Assert.Contains(s.Actions, a => a.Street == "Flop" && a.Kind == "Bet"));
+
+        var rules = FullRun.Value.File.Rules;
+        Assert.EndsWith("you bet the flop and got called", rules.Single(r => r.Id == "overfolder-turn-barrel").Conditions);
+        Assert.EndsWith("the flop checked through", rules.Single(r => r.Id == "overfolder-turn-stab").Conditions);
     }
 
     [Fact]
@@ -329,7 +357,8 @@ public class GeneratorTests
                 Assert.Equal(LineTemplate.For(line).OptionIds, s.Options.Select(o => o.Id));
                 Assert.Equal(h.Board.Take(LineTemplate.For(line).BoardCardCount), s.Board);
                 var facts = SpotFacts.Analyze(hole, s.Board.Select(Card.Parse).ToArray(), ClassifierOptions.Default);
-                Assert.True(RuleMatcher.Matches(rule, h.VillainType, line, facts, Seating.Empty), $"{h.Id} step {i + 1} vs {rule.Id}");
+                Assert.True(RuleMatcher.Matches(rule, h.VillainType, line, facts, Seating.Empty, DrillGenerator.EarlierOf(s.Actions, h.HeroPosition)),
+                    $"{h.Id} step {i + 1} vs {rule.Id}");
                 Assert.Equal(200.5, s.Stacks.Hero + s.Stacks.Villain + s.Pot, 6); // heads-up plus the dead small blind
 
                 if (i == 0) continue;
@@ -344,10 +373,15 @@ public class GeneratorTests
 
             // The earlier decisions are exactly the streets where a rule decides hero's play.
             var last = (SrpLaterStreetLine)LineTemplate.For(Enum.Parse<LineId>(steps[^1].Line));
-            var ruled = last.EarlierStreets
-                .Select(street => DrillGenerator.HeroPlay(street, hole, fullBoard.Take(LineTemplate.BoardCountAt(street)).ToList(),
-                    h.VillainType, content.Rules, ClassifierOptions.Default).Rule?.Id)
-                .OfType<string>();
+            var before = new Dictionary<Street, EarlierAction>();
+            var ruled = new List<string>();
+            foreach (var street in last.EarlierStreets)
+            {
+                var played = DrillGenerator.HeroPlay(street, hole, fullBoard.Take(LineTemplate.BoardCountAt(street)).ToList(),
+                    h.VillainType, content.Rules, ClassifierOptions.Default, before);
+                if (played.Rule is not null) ruled.Add(played.Rule.Id);
+                before[street] = played.Play == StreetPlay.CheckThrough ? EarlierAction.Check : EarlierAction.Bet;
+            }
             Assert.Equal(ruled, steps.SkipLast(1).Select(s => s.RuleId));
         }
     }
