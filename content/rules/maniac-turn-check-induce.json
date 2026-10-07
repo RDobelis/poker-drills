@@ -1,0 +1,13 @@
+{
+  "id": "maniac-turn-check-induce",
+  "placeholder": true,
+  "villainType": "Maniac",
+  "line": "SRP_HeroIP_TurnVillainChecks",
+  "hero": { "minStrength": "SecondPair", "maxStrength": "TopPairWeakKicker" },
+  "draws": null,
+  "boardRequire": [],
+  "boardExclude": [],
+  "earlier": { "flop": "check" },
+  "correct": "Check",
+  "reason": "The flop checked through; check the turn again with second pair or a weak top pair. A maniac reads that as weakness and bluffs the river, where you can call."
+}

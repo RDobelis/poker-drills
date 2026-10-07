@@ -1,0 +1,12 @@
+{
+  "id": "maniac-flop-no-bluff",
+  "placeholder": true,
+  "villainType": "Maniac",
+  "line": "SRP_HeroIP_FlopVillainChecks",
+  "hero": { "minStrength": "Air", "maxStrength": "Air" },
+  "draws": "none",
+  "boardRequire": [],
+  "boardExclude": [],
+  "correct": "Check",
+  "reason": "Maniacs rarely fold to a c-bet and love to raise. With no pair and no draw, check back."
+}

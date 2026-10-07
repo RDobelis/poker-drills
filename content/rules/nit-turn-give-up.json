@@ -1,0 +1,13 @@
+{
+  "id": "nit-turn-give-up",
+  "placeholder": true,
+  "villainType": "Nit",
+  "line": "SRP_HeroIP_TurnVillainChecks",
+  "hero": { "minStrength": "Air", "maxStrength": "Air" },
+  "draws": "none",
+  "boardRequire": [],
+  "boardExclude": [],
+  "earlier": { "flop": "bet" },
+  "correct": "Check",
+  "reason": "A nit who calls a flop c-bet has a real hand and won't fold it to a second barrel. With air and no draw, give up."
+}

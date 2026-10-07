@@ -273,11 +273,15 @@ public class GeneratorTests
         Assert.Equal((StreetPlay.CheckThrough, "station-flop-no-stab"), (station.Play, station.Rule?.Id));
 
         var nit = Play(Street.Flop, air, dryFlop, "Nit");
-        Assert.Equal(StreetPlay.CheckThrough, nit.Play); // the default checks air
-        Assert.Null(nit.Rule);
-        Assert.Equal("Flop: check (default for Air)", DrillGenerator.Describe(nit));
-        Assert.Equal(StreetPlay.Bet33Call, Play(Street.Flop, Card.ParseMany("Ah5h"), Card.ParseMany("Kh9h2c"), "Nit").Play); // flush draw
-        Assert.Equal(StreetPlay.Bet75Call, Play(Street.Turn, Card.ParseMany("AsKd"), Card.ParseMany("Kc7h2s9d"), "Nit").Play); // TPGK
+        Assert.Equal((StreetPlay.Bet33Call, "nit-flop-stab"), (nit.Play, nit.Rule?.Id));
+
+        // The reg has no rules: the default decides.
+        var reg = Play(Street.Flop, air, dryFlop, "Reg");
+        Assert.Equal(StreetPlay.CheckThrough, reg.Play); // the default checks air
+        Assert.Null(reg.Rule);
+        Assert.Equal("Flop: check (default for Air)", DrillGenerator.Describe(reg));
+        Assert.Equal(StreetPlay.Bet33Call, Play(Street.Flop, Card.ParseMany("Ah5h"), Card.ParseMany("Kh9h2c"), "Reg").Play); // flush draw
+        Assert.Equal(StreetPlay.Bet75Call, Play(Street.Turn, Card.ParseMany("AsKd"), Card.ParseMany("Kc7h2s9d"), "Reg").Play); // TPGK
 
         // Turn rules decide the turn, and what happened on the flop picks the rule: an overfolder who called a flop
         // bet gets barrelled big, one who checked the flop through gets a small stab.
@@ -313,17 +317,19 @@ public class GeneratorTests
         var rules = TestHelpers.Content.Rules;
         Assert.Equal(["station-river-no-bluff", "station-river-value", "station-turn-no-bluff", "station-turn-value"],
             DrillGenerator.HandAnchors("CallingStation", rules).Select(r => r.Id));
+        // overfolder-turn-stab needs a checked flop, but the overfolder's only flop rule bets: no hand can lead there.
         Assert.Equal(["overfolder-turn-barrel"], DrillGenerator.HandAnchors("Overfolder", rules).Select(r => r.Id));
-        Assert.Empty(DrillGenerator.HandAnchors("Nit", rules)); // a river rule, but nothing for the flop or turn
-        Assert.Empty(DrillGenerator.HandAnchors("Maniac", rules)); // its flop rule is out of position (facing a c-bet)
+        Assert.Equal(["nit-river-fold-one-pair", "nit-turn-give-up"], DrillGenerator.HandAnchors("Nit", rules).Select(r => r.Id));
+        Assert.Equal(["maniac-river-bluffcatch", "maniac-turn-check-induce"], DrillGenerator.HandAnchors("Maniac", rules).Select(r => r.Id));
+        Assert.Empty(DrillGenerator.HandAnchors("Reg", rules)); // no rules at all
 
         var result = FullRun.Value;
-        Assert.Equal(["hands-calling-station", "hands-overfolder"],
+        Assert.Equal(["hands-nit", "hands-calling-station", "hands-maniac", "hands-overfolder"],
             result.File.Rules.Where(r => r.Kind == DrillKinds.Hand).Select(r => r.Id));
         foreach (var report in result.Reports.Where(r => r.Kind == DrillKinds.Hand))
         {
-            Assert.Equal(DrillGenerator.HandAnchors(report.RuleId == "hands-overfolder" ? "Overfolder" : "CallingStation", rules).Count * 50,
-                report.Produced);
+            var type = TestHelpers.Content.Types.Single(t => DrillGenerator.HandsRuleId(t) == report.RuleId);
+            Assert.Equal(DrillGenerator.HandAnchors(type.Id, rules).Count * 50, report.Produced);
             Assert.Empty(report.Warnings);
         }
     }

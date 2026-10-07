@@ -11,7 +11,7 @@ public class PlayerTypeAndContentTests
     {
         var content = TestHelpers.Content;
         Assert.Equal(["Nit", "CallingStation", "Maniac", "Overfolder", "Reg"], content.Types.Select(t => t.Id));
-        Assert.Equal(20, content.Rules.Count);
+        Assert.Equal(26, content.Rules.Count);
         var barrel = content.Rules.Single(r => r.Id == "overfolder-turn-barrel");
         Assert.Equal(LineId.SRP_HeroIP_TurnVillainChecks, barrel.Line);
         Assert.Equal(new Dictionary<Street, EarlierAction> { [Street.Flop] = EarlierAction.Bet }, barrel.Earlier);

@@ -1,0 +1,12 @@
+{
+  "id": "nit-flop-stab",
+  "placeholder": true,
+  "villainType": "Nit",
+  "line": "SRP_HeroIP_FlopVillainChecks",
+  "hero": { "minStrength": "Air", "maxStrength": "Air" },
+  "draws": null,
+  "boardRequire": [],
+  "boardExclude": [],
+  "correct": "Bet33",
+  "reason": "Nits give up on the flop without a real hand. A small c-bet with air takes it down often enough."
+}

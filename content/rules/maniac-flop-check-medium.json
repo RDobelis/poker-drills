@@ -1,0 +1,12 @@
+{
+  "id": "maniac-flop-check-medium",
+  "placeholder": true,
+  "villainType": "Maniac",
+  "line": "SRP_HeroIP_FlopVillainChecks",
+  "hero": { "minStrength": "SecondPair", "maxStrength": "TopPairWeakKicker" },
+  "draws": null,
+  "boardRequire": [],
+  "boardExclude": [],
+  "correct": "Check",
+  "reason": "Against a maniac, check back second pair or a weak top pair: betting gets you raised off it, checking leaves room for their bluffs."
+}

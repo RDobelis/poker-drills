@@ -75,9 +75,15 @@ Rule                                Kind      Drills  Attempts  Conflicts  Warni
 maniac-3bet-4bet-premium            action       200     10666          0  -
 maniac-3bet-call-strong             action       200      9121          0  -
 maniac-flop-call-down               action       200      2415          0  -
-maniac-river-bluffcatch             action       200      4750          0  -
+maniac-flop-check-medium            action       200      3838          0  -
+maniac-flop-no-bluff                action       200      1514          0  -
+maniac-river-bluffcatch             action       200      3099          0  -
+maniac-turn-check-induce            action       200      4208          0  -
 nit-3bet-fold                       action       200      1633          0  -
-nit-river-fold-one-pair             action       200     11199          0  -
+nit-flop-check-medium               action       200      3802          0  -
+nit-flop-stab                       action       200      1074          0  -
+nit-river-fold-one-pair             action       200     14059          0  -
+nit-turn-give-up                    action       200      6258          0  -
 overfolder-3way-dry-stab            action       200     17100          0  -
 overfolder-flop-stab                action       200      5710          0  -
 overfolder-turn-barrel              action       200     14595          0  -
@@ -97,9 +103,11 @@ identify-calling-station            identify     100       100          -  -
 identify-maniac                     identify     100       100          -  -
 identify-overfolder                 identify     100       100          -  -
 identify-reg                        identify     100       100          -  -
+hands-nit                           hand         100      6383          -  -
 hands-calling-station               hand         200     11158          -  -
+hands-maniac                        hand         100      2188          -  -
 hands-overfolder                    hand          50      6237          -  -
-Wrote 4750 drills ... Conflicts: 0. Warnings: 0.
+Wrote 6150 drills ... Conflicts: 0. Warnings: 0.
 ```
 
 Turn and river rules need more attempts than flop rules because a deal is dropped when villain would have folded
@@ -115,7 +123,7 @@ conflict checker re-analyses every generated drill from its cards against every 
 line; a match with a different `correct` answer is a conflict: both rule ids and an example are printed,
 the process exits with code 1 and `drills.json` is not written.
 
-The 20 placeholder rules produce **0 conflicts**. Beyond the brief's exclusions (`station-river-value` already
+The 26 placeholder rules produce **0 conflicts**. Beyond the brief's exclusions (`station-river-value` already
 excludes `FourToFlush` and `FourToStraight`), `station-iso-playable` excludes a maniac behind so it doesn't clash
 with `station-iso-playable-maniac-behind`. Every decision of every hand drill is checked the same way. Rules for different villain
 types (for example `overfolder-flop-stab` and `station-flop-no-stab`) never conflict because the villain
@@ -191,9 +199,13 @@ Full definitions are in [PLAN.md](PLAN.md). The interpretation calls:
   rule (the "anchor") whose villain type also has a rule for an earlier street, and is dealt like that rule's
   drills; it is kept only if a rule decided at least one earlier street. Each street a rule decided becomes a
   decision, graded by that rule; streets no rule covers are played by the default and are just part of the
-  story. With the placeholder rules that gives station hands (flop no-stab → turn value/no-bluff → river
-  value/no-bluff) and overfolder hands (flop stab → turn barrel); nit and maniac have no rules for earlier
-  streets yet, so they get none. Hands are listed per villain type as `hands-<type>`.
+  story. With the placeholder rules that gives:
+  - station: flop no-stab → turn value/no-bluff → river value/no-bluff;
+  - overfolder: flop stab → turn barrel;
+  - nit: flop stab → turn give-up, or flop check with a medium pair → fold one pair to the river bet;
+  - maniac: flop check (no bluff, or a medium pair) → turn check to induce → call the river bluff.
+
+  The reg has no rules, so no hands. Hands are listed per villain type as `hands-<type>`.
 - **Preflop realism**: in the postflop lines hero's hand must fit the action. The generator draws the seat
   first and rejects the deal if hero wouldn't open that hand from that seat (or wouldn't flat it in the BB
   against that opener), per `content/ranges.json`. So 93o is never opened UTG, and weak hands mostly appear

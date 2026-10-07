@@ -1,0 +1,12 @@
+{
+  "id": "nit-flop-check-medium",
+  "placeholder": true,
+  "villainType": "Nit",
+  "line": "SRP_HeroIP_FlopVillainChecks",
+  "hero": { "minStrength": "SecondPair", "maxStrength": "TopPairWeakKicker" },
+  "draws": null,
+  "boardRequire": [],
+  "boardExclude": [],
+  "correct": "Check",
+  "reason": "Nits only call a flop bet with hands that beat second pair or a weak top pair. Check back and keep the pot small."
+}
