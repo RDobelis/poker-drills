@@ -11,6 +11,9 @@ public static class DrillKinds
 
 public sealed record Stacks(double Hero, double Villain);
 
+/// <summary>A player sitting at the table (every seat except hero's, villain included).</summary>
+public sealed record SeatPlayer(string Seat, string Type, StatLine Stats);
+
 /// <summary>One step of the hand for the table view. <c>To</c> = seat's total in front of it on this street.</summary>
 public sealed record DrillAction(string Street, string Seat, string Kind, double To);
 
@@ -38,6 +41,7 @@ public sealed record Drill
     public double? ToCall { get; init; }
     public required IReadOnlyList<string> ActionHistory { get; init; }
     public required IReadOnlyList<DrillAction> Actions { get; init; }
+    public required IReadOnlyList<SeatPlayer> Players { get; init; }
     public required IReadOnlyList<string> HeroCards { get; init; }
     public required IReadOnlyList<string> Board { get; init; }
     public required string Question { get; init; }
@@ -57,7 +61,7 @@ public sealed record RuleSummary(
     string Reason,
     bool Placeholder);
 
-public sealed record TypeSummary(string Id, string Name, string Description, IReadOnlyDictionary<string, double[]> Ranges);
+public sealed record TypeSummary(string Id, string Name, string ShortName, string Description, IReadOnlyDictionary<string, double[]> Ranges);
 
 /// <summary>Root of web/public/drills.json.</summary>
 public sealed record DrillFile(

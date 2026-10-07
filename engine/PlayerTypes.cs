@@ -17,13 +17,19 @@ public readonly record struct StatRange(double Min, double Max)
     public override string ToString() => string.Create(CultureInfo.InvariantCulture, $"{Min:0.##}-{Max:0.##}");
 }
 
+/// <param name="TableShare">Relative weight of this type when filling the other seats at the table.</param>
+/// <param name="ShortName">Label on a table seat, where space is tight (defaults to the name).</param>
 public sealed record PlayerType(
     string Id,
     string Name,
     string Description,
     bool Placeholder,
-    IReadOnlyDictionary<string, StatRange> Ranges)
+    IReadOnlyDictionary<string, StatRange> Ranges,
+    int TableShare = 1,
+    string? ShortName = null)
 {
+    public string SeatLabel => string.IsNullOrWhiteSpace(ShortName) ? Name : ShortName;
+
     public bool Contains(StatLine stats) => StatKeys.All.All(k => Ranges[k].Contains(stats[k]));
 }
 
@@ -74,6 +80,20 @@ public static class StatSampler
             if (s.Pfr <= s.Vpip && s.ThreeBet <= s.Pfr) return s;
         }
         throw new InvalidOperationException($"Could not sample a consistent stat line for {type.Id}; check its ranges");
+    }
+
+    /// <summary>A type drawn in proportion to <see cref="PlayerType.TableShare"/>.</summary>
+    public static PlayerType PickByTableShare(IReadOnlyList<PlayerType> types, Rng rng)
+    {
+        var total = types.Sum(t => t.TableShare);
+        if (total <= 0) throw new InvalidOperationException("No player type has a tableShare above 0");
+        var x = rng.NextInt(total);
+        foreach (var t in types)
+        {
+            if (x < t.TableShare) return t;
+            x -= t.TableShare;
+        }
+        throw new InvalidOperationException("unreachable: x is below the total share");
     }
 
     public static IReadOnlyList<PlayerType> TypesContaining(IEnumerable<PlayerType> types, StatLine stats) =>

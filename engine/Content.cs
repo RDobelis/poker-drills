@@ -144,10 +144,13 @@ public static partial class ContentLoader
             }
             errors.AddRange((t.Ranges?.Keys ?? Enumerable.Empty<string>()).Where(k => !StatKeys.All.Contains(k)).Select(k => $"{where}: unknown stat '{k}'"));
 
-            types.Add(new PlayerType(t.Id, string.IsNullOrWhiteSpace(t.Name) ? t.Id : t.Name, t.Description ?? "", t.Placeholder, ranges));
+            if (t.TableShare is < 0) errors.Add($"{where}: tableShare must be 0 or more");
+            types.Add(new PlayerType(t.Id, string.IsNullOrWhiteSpace(t.Name) ? t.Id : t.Name, t.Description ?? "", t.Placeholder,
+                ranges, Math.Max(0, t.TableShare ?? 1), t.ShortName));
         }
 
         errors.AddRange(types.GroupBy(t => t.Id).Where(g => g.Count() > 1).Select(g => $"Duplicate type id '{g.Key}'"));
+        if (types.Count > 0 && types.All(t => t.TableShare == 0)) errors.Add("At least one type needs a tableShare above 0");
         if (errors.Count > 0) throw new ContentException(errors);
         return types;
     }
@@ -287,6 +290,8 @@ public static partial class ContentLoader
         public string? Name { get; set; }
         public string? Description { get; set; }
         public bool Placeholder { get; set; }
+        public int? TableShare { get; set; }
+        public string? ShortName { get; set; }
         public Dictionary<string, double[]>? Ranges { get; set; }
     }
 

@@ -116,6 +116,26 @@ public class PlayerTypeAndContentTests
     }
 
     [Fact]
+    public void Table_shares_are_read_and_validated()
+    {
+        Assert.Equal(30, Types.Single(t => t.Id == "Reg").TableShare);
+        Assert.Equal("Station", Types.Single(t => t.Id == "CallingStation").SeatLabel); // shortName set
+        Assert.Equal("Reg", Types.Single(t => t.Id == "Reg").SeatLabel); // falls back to name
+
+        const string ranges =
+            "\"ranges\": { \"VPIP\": [10, 20], \"PFR\": [5, 10], \"3Bet\": [1, 3], \"WTSD\": [20, 30], \"AF\": [1, 2], \"FoldToCbet\": [40, 50] }";
+        Assert.Equal(1, ContentLoader.ParseTypes($$"""{ "types": [ { "id": "A", {{ranges}} } ] }""")[0].TableShare);
+
+        var negative = Assert.Throws<ContentException>(() =>
+            ContentLoader.ParseTypes($$"""{ "types": [ { "id": "A", "tableShare": -1, {{ranges}} } ] }"""));
+        Assert.Contains("tableShare must be 0 or more", negative.Message);
+
+        var allZero = Assert.Throws<ContentException>(() =>
+            ContentLoader.ParseTypes($$"""{ "types": [ { "id": "A", "tableShare": 0, {{ranges}} } ] }"""));
+        Assert.Contains("tableShare above 0", allZero.Message);
+    }
+
+    [Fact]
     public void Types_with_empty_range_are_rejected()
     {
         const string json = """

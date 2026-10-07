@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { Drill, DrillFile } from '../types';
+import type { Drill, DrillFile, TypeNamer } from '../types';
 import { todayKey } from '../logic/dates';
 import { buildSession } from '../logic/session';
 import { completeSession, loadState, recordAnswer, saveState, startSession } from '../logic/state';
@@ -12,7 +12,13 @@ type Screen = 'home' | 'session' | 'summary';
 /** Student side: home, the daily session and its summary. All progress lives in localStorage. */
 export function Trainer({ data }: { data: DrillFile }) {
   const drillById = useMemo(() => new Map(data.drills.map((d) => [d.id, d])), [data]);
-  const typeName = useCallback((id: string) => data.types.find((t) => t.id === id)?.name ?? id, [data]);
+  const typeName = useCallback<TypeNamer>(
+    (id, short = false) => {
+      const t = data.types.find((x) => x.id === id);
+      return (short ? t?.shortName : undefined) ?? t?.name ?? id;
+    },
+    [data],
+  );
 
   const [state, setState] = useState(loadState);
   const [saveFailed, setSaveFailed] = useState(false);

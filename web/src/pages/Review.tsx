@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { Drill, DrillFile } from '../types';
+import type { Drill, DrillFile, TypeNamer } from '../types';
 import { DrillView } from '../components/DrillView';
 import { lineLabel } from '../components/labels';
 import { todayKey } from '../logic/dates';
@@ -11,7 +11,13 @@ const SAMPLE_SIZE = 10;
 /** Coach page (/review): pick a rule, inspect random drills in full, flag them with notes, export. */
 export function Review({ data }: { data: DrillFile }) {
   const drillById = useMemo(() => new Map(data.drills.map((d) => [d.id, d])), [data]);
-  const typeName = useCallback((id: string) => data.types.find((t) => t.id === id)?.name ?? id, [data]);
+  const typeName = useCallback<TypeNamer>(
+    (id, short = false) => {
+      const t = data.types.find((x) => x.id === id);
+      return (short ? t?.shortName : undefined) ?? t?.name ?? id;
+    },
+    [data],
+  );
   const countByRule = useMemo(() => {
     const m = new Map<string, number>();
     for (const d of data.drills) m.set(d.ruleId, (m.get(d.ruleId) ?? 0) + 1);

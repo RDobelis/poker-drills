@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Drill, DrillAction } from '../types';
+import type { Drill, DrillAction, SeatPlayer, TypeNamer } from '../types';
 import { PlayingCard } from './Cards';
 import { bb } from './labels';
 import {
@@ -17,11 +17,14 @@ import {
 
 interface Props {
   drill: Drill;
-  typeName: (typeId: string) => string;
+  typeName: TypeNamer;
   /** Replay the hand from the blinds when the drill opens. */
   autoPlay: boolean;
   /** The decision is made: show the final state. */
   answered: boolean;
+  /** Seat whose HUD is shown; tapping another seat selects it. */
+  selectedSeat?: string | null;
+  onSelectSeat?: (seat: Seat) => void;
 }
 
 const ACTION_LABEL: Record<DrillAction['kind'], string> = {
@@ -47,7 +50,7 @@ function frameDelay(drill: Drill, frames: Frame[], i: number): number {
 }
 
 /** 6-max table, hero at the bottom; replays the action before hero's decision. */
-export function PokerTable({ drill, typeName, autoPlay, answered }: Props) {
+export function PokerTable({ drill, typeName, autoPlay, answered, selectedSeat = null, onSelectSeat }: Props) {
   const frames = useMemo(() => buildFrames(drill), [drill]);
   const last = frames.length - 1;
   const [animate] = useState(() => autoPlay && !answered && !prefersReducedMotion());
@@ -120,11 +123,13 @@ export function PokerTable({ drill, typeName, autoPlay, answered }: Props) {
           slot={slotOf(seat, hero)}
           state={table.seats[seat]}
           role={seat === hero ? 'hero' : seat === villain ? 'villain' : 'other'}
-          villainType={drill.villainType}
-          villainName={typeName(drill.villainType)}
+          player={drill.players.find((p) => p.seat === seat)}
+          typeName={typeName}
           heroCards={drill.heroCards}
           acting={acting.has(seat)}
           toAct={seat === hero && atEnd && !answered}
+          selected={seat === selectedSeat}
+          onSelect={onSelectSeat}
         />
       ))}
 
@@ -146,18 +151,49 @@ interface SeatProps {
   slot: number;
   state: SeatState;
   role: 'hero' | 'villain' | 'other';
-  villainType: string;
-  villainName: string;
+  player: SeatPlayer | undefined;
+  typeName: TypeNamer;
   heroCards: string[];
   acting: boolean;
   toAct: boolean;
+  selected: boolean;
+  onSelect?: (seat: Seat) => void;
 }
 
-function SeatView({ seat, slot, state, role, villainType, villainName, heroCards, acting, toAct }: SeatProps) {
-  const classes = ['seat', `seat-slot-${slot}`, state.folded && 'folded', acting && 'acting', toAct && 'to-act']
+function SeatView({ seat, slot, state, role, player, typeName, heroCards, acting, toAct, selected, onSelect }: SeatProps) {
+  const classes = [
+    'seat',
+    `seat-slot-${slot}`,
+    role === 'villain' && 'villain',
+    state.folded && 'folded',
+    acting && 'acting',
+    toAct && 'to-act',
+    selected && 'selected',
+  ]
     .filter(Boolean)
     .join(' ');
   const action = state.last && state.last.kind !== 'Post' ? ACTION_LABEL[state.last.kind] : null;
+
+  const boxContent = (
+    <>
+      <span className="seat-head">
+        <span>{seat}</span>
+        {seat === 'BTN' && (
+          <span className="dealer" title="Dealer button">
+            D
+          </span>
+        )}
+        {role === 'villain' && (
+          <span className="vs-tag" title="Your opponent in this hand">
+            VS
+          </span>
+        )}
+      </span>
+      {role === 'hero' && <span className="seat-name">You</span>}
+      {player && <span className={`badge badge-sm type-${player.type}`}>{typeName(player.type, true)}</span>}
+      <span className="seat-stack">{bb(state.stack)}</span>
+    </>
+  );
 
   return (
     <div className={classes}>
@@ -175,19 +211,19 @@ function SeatView({ seat, slot, state, role, villainType, villainName, heroCards
           </div>
         )
       )}
-      <div className="seat-box">
-        <div className="seat-head">
-          <span>{seat}</span>
-          {seat === 'BTN' && (
-            <span className="dealer" title="Dealer button">
-              D
-            </span>
-          )}
-        </div>
-        {role === 'hero' && <div className="seat-name">You</div>}
-        {role === 'villain' && <span className={`badge badge-sm type-${villainType}`}>{villainName}</span>}
-        <div className="seat-stack">{bb(state.stack)}</div>
-      </div>
+      {player && onSelect ? (
+        <button
+          type="button"
+          className="seat-box"
+          aria-pressed={selected}
+          aria-label={`${seat}, ${typeName(player.type)}${role === 'villain' ? ', your opponent' : ''}. Show HUD stats`}
+          onClick={() => onSelect(seat)}
+        >
+          {boxContent}
+        </button>
+      ) : (
+        <div className="seat-box">{boxContent}</div>
+      )}
       {action && <span className={`seat-action action-${state.last!.kind.toLowerCase()}`}>{action}</span>}
     </div>
   );

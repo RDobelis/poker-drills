@@ -25,6 +25,13 @@ export interface DrillFacts {
   hand: string | null;
 }
 
+/** A player at the table: every seat except hero's, villain included. */
+export interface SeatPlayer {
+  seat: DrillAction['seat'];
+  type: string;
+  stats: StatLine;
+}
+
 /** One step of the hand. `to` = the seat's total in front of it on this street after the action. */
 export interface DrillAction {
   street: 'Preflop' | 'Flop' | 'Turn' | 'River';
@@ -47,6 +54,7 @@ export interface Drill {
   toCall: number | null;
   actionHistory: string[];
   actions: DrillAction[];
+  players: SeatPlayer[];
   heroCards: string[];
   board: string[];
   question: string;
@@ -67,9 +75,14 @@ export interface RuleSummary {
   placeholder: boolean;
 }
 
+/** Display name of a player type; `short` gives the compact label used on table seats. */
+export type TypeNamer = (typeId: string, short?: boolean) => string;
+
 export interface TypeSummary {
   id: string;
   name: string;
+  /** Seat label where space is tight (equals `name` unless content sets one). */
+  shortName: string;
   description: string;
   ranges: Record<string, [number, number]>;
 }

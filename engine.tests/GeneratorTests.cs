@@ -39,6 +39,17 @@ public class GeneratorTests
             Assert.Contains(d.Correct, d.Options.Select(o => o.Id));
             Assert.Equal(facts.HandClass?.ToString(), d.Facts!.HandClass);
 
+            // Every seat but hero's has a player; villain keeps the rule's type and HUD; each HUD fits only its type.
+            Assert.Equal(5, d.Players.Count);
+            Assert.DoesNotContain(d.Players, p => p.Seat == d.HeroPosition);
+            var villainPlayer = Assert.Single(d.Players, p => p.Seat == d.VillainPosition);
+            Assert.Equal(d.VillainType, villainPlayer.Type);
+            Assert.Equal(d.VillainStats, villainPlayer.Stats);
+            foreach (var p in d.Players)
+            {
+                Assert.Equal([p.Type], StatSampler.TypesContaining(content.Types, p.Stats).Select(t => t.Id));
+            }
+
             // Hero's hand fits the preflop action (no 93o opened UTG).
             var heroSeat = Enum.Parse<Position>(d.HeroPosition!);
             var villainSeat = Enum.Parse<Position>(d.VillainPosition!);
@@ -124,6 +135,30 @@ public class GeneratorTests
             Assert.True(report.Attempts <= 200_000);
             Assert.Empty(report.Warnings);
         }
+    }
+
+    [Fact]
+    public void Seat_types_follow_table_shares_and_never_change_the_drills()
+    {
+        var content = TestHelpers.Content;
+        var drills = FullRun.Value.File.Drills.Where(d => d.Kind == DrillKinds.Action).ToList();
+        var others = drills.SelectMany(d => d.Players.Where(p => p.Seat != d.VillainPosition)).ToList();
+        var totalShare = (double)content.Types.Sum(t => t.TableShare);
+        foreach (var t in content.Types)
+        {
+            var observed = others.Count(p => p.Type == t.Id) / (double)others.Count;
+            Assert.InRange(observed, t.TableShare / totalShare - 0.03, t.TableShare / totalShare + 0.03);
+        }
+
+        // Who sits around the table must not change a single card, action or drill id.
+        var maniacTable = content with { Types = content.Types.Select(t => t with { TableShare = t.Id == "Maniac" ? 100 : 1 }).ToList() };
+        var a = DrillGenerator.Generate(content, Small).File.Drills;
+        var b = DrillGenerator.Generate(maniacTable, Small).File.Drills;
+        Assert.Equal(a.Select(d => d.Id), b.Select(d => d.Id));
+        Assert.Equal(a.Select(Spot), b.Select(Spot));
+        Assert.NotEqual(a.SelectMany(d => d.Players.Select(p => p.Type)), b.SelectMany(d => d.Players.Select(p => p.Type)));
+
+        static string Spot(Drill d) => string.Join(",", d.HeroCards.Concat(d.Board).Concat(d.ActionHistory));
     }
 
     [Fact]

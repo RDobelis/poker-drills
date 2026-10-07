@@ -106,6 +106,8 @@ type is part of the match.
 ## Editing content
 
 - `content/types.json`: player types and their stat ranges (VPIP, PFR, 3Bet, WTSD, AF, FoldToCbet).
+  `tableShare` (optional, default 1) sets how often each type sits in the other seats at the table;
+  `shortName` (optional) is the label on a table seat when the full name is too long.
 - `content/ranges.json`: which hands hero can hold in the postflop lines. `open` = hands hero opens from
   UTG/MP/CO/BTN; `bigBlindCall` = hands hero flat-calls in the BB against an open from each seat. Standard
   notation: `22+`, `77-99`, `A2s+`, `KTo+`, `K9s-K6s`, `AK`.
@@ -161,8 +163,10 @@ Full definitions are in [PLAN.md](PLAN.md). The interpretation calls:
 ## Web app behaviour
 
 - **Table view**: action drills are shown on a 6-max table with hero at the bottom. Every seat shows its
-  position, stack and last action; villain's seat carries the player-type badge; bets sit in front of the
-  seats and the pot and board in the middle. The action before hero's decision replays step by step (Skip /
+  position, stack, last action and the type of the player sitting there (drawn by `tableShare`, each with
+  its own HUD line); villain's seat is marked "VS". Tapping a seat shows that player's HUD stats. Bets sit in
+  front of the seats and the pot and board in the middle. For now the other seats are labels only: their
+  actions and the rules don't depend on them yet. The action before hero's decision replays step by step (Skip /
   Replay buttons; no animation with reduced-motion settings). The text hand history is under the answers.
 - **Session**: due reviews first (most overdue, lowest box), then new drills taken round-robin over the
   rules, least-practised first (all identification drills share one slot). At most 3 drills per rule; the

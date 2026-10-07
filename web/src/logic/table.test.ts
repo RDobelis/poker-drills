@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { DrillFile } from '../types';
-import { buildFrames, decisionStreet, describeFrame, slotOf, tableAt, toCallFor, totalPot, type Seat } from './table';
+import { SEATS, buildFrames, decisionStreet, describeFrame, slotOf, tableAt, toCallFor, totalPot, type Seat } from './table';
 
 // Replays every action drill in the generated drills.json: the table the student sees must end exactly
 // at the pot, stacks and amount to call the C# generator computed.
@@ -51,6 +51,15 @@ describe('table replay of the generated drills', () => {
     const atFlop = tableAt(d, flopDeal);
     expect(atFlop.pot).toBeCloseTo(5.5, 6); // open + call + dead small blind
     expect(Object.values(atFlop.seats).every((s) => s.inFront === 0)).toBe(true);
+  });
+
+  it('seats a typed player everywhere except hero, villain keeping the rule type', () => {
+    const typeIds = new Set(file.types.map((t) => t.id));
+    for (const d of actionDrills) {
+      expect([...d.players.map((p) => p.seat)].sort(), d.id).toEqual(SEATS.filter((s) => s !== d.heroPosition).sort());
+      expect(d.players.find((p) => p.seat === d.villainPosition)?.type, d.id).toBe(d.villainType);
+      for (const p of d.players) expect(typeIds.has(p.type), d.id).toBe(true);
+    }
   });
 
   it('seats hero at the bottom and goes clockwise', () => {

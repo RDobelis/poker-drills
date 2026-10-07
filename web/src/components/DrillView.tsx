@@ -1,11 +1,12 @@
-import type { Drill, StatLine } from '../types';
+import { useState } from 'react';
+import type { Drill, StatLine, TypeNamer } from '../types';
 import { TextWithCards } from './Cards';
 import { PokerTable } from './PokerTable';
 import { STAT_LABELS, lineLabel } from './labels';
 
 interface Props {
   drill: Drill;
-  typeName: (typeId: string) => string;
+  typeName: TypeNamer;
   /** The option the player picked. Once set, the options show right/wrong. */
   chosen?: string;
   /** Coach review: everything revealed, correct option marked, classifier facts shown. */
@@ -18,6 +19,10 @@ export function DrillView({ drill, typeName, chosen, review = false, onChoose }:
   const isIdentify = drill.kind === 'identify';
   const showType = !isIdentify || revealed; // the type IS the question on identify drills
 
+  // Whose HUD the stat strip shows: villain first; tapping a seat at the table switches it.
+  const [hudSeat, setHudSeat] = useState<string | null>(drill.villainPosition);
+  const hudPlayer = drill.players.find((p) => p.seat === hudSeat);
+
   return (
     <article className="drill">
       <div className="drill-head">
@@ -27,9 +32,29 @@ export function DrillView({ drill, typeName, chosen, review = false, onChoose }:
         <span className="line-label">{lineLabel(drill.line)}</span>
       </div>
 
-      <StatGrid stats={drill.villainStats} compact={!isIdentify} />
+      {!isIdentify && hudPlayer && (
+        <div className="hud-label">
+          <span className="muted">HUD</span>
+          <span className={`badge badge-sm type-${hudPlayer.type}`}>{typeName(hudPlayer.type)}</span>
+          <span>
+            {hudPlayer.seat}
+            {hudPlayer.seat === drill.villainPosition ? ' · your opponent' : ''}
+          </span>
+          <span className="muted hud-hint">Tap a seat for its stats</span>
+        </div>
+      )}
+      <StatGrid stats={isIdentify ? drill.villainStats : (hudPlayer?.stats ?? drill.villainStats)} compact={!isIdentify} />
 
-      {!isIdentify && <PokerTable drill={drill} typeName={typeName} autoPlay={!review} answered={revealed} />}
+      {!isIdentify && (
+        <PokerTable
+          drill={drill}
+          typeName={typeName}
+          autoPlay={!review}
+          answered={revealed}
+          selectedSeat={hudSeat}
+          onSelectSeat={setHudSeat}
+        />
+      )}
 
       <h2 className="question">{drill.question}</h2>
       <div className={`options${isIdentify ? '' : ' options-grid'}`}>

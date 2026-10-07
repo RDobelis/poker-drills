@@ -22,7 +22,8 @@ public sealed record GenerationResult(DrillFile File, IReadOnlyList<RuleReport> 
 
 public static class DrillGenerator
 {
-    public const int SchemaVersion = 2; // 2: drills carry step-by-step `actions` for the table view
+    // 2: drills carry step-by-step `actions` for the table view. 3: `players` = a type and HUD for every seat.
+    public const int SchemaVersion = 3;
     public const string IdentifyLine = "Identify";
     public const string IdentifyQuestion = "Which player type is this?";
 
@@ -93,10 +94,35 @@ public static class DrillGenerator
 
             var stats = StatSampler.SampleUnambiguous(villain, types, rng);
             var id = UniqueId($"{rule.Id}-{Rng.Fnv1a32(key):x8}", ids);
-            drills.Add(ActionDrill(id, rule, template, stats, spot, hole, board, facts));
+            var players = SeatPlayers(id, spot, villain, stats, types, options.Seed);
+            drills.Add(ActionDrill(id, rule, template, stats, spot, hole, board, facts, players));
         }
 
         return (drills, attempts);
+    }
+
+    /// <summary>
+    /// Who sits where: villain keeps the rule's type and HUD; every other seat except hero's gets a type drawn by
+    /// <see cref="PlayerType.TableShare"/> and an unambiguous HUD line. Uses its own random stream keyed by the
+    /// drill id, so the cards and action of a drill never depend on the seating.
+    /// </summary>
+    public static IReadOnlyList<SeatPlayer> SeatPlayers(string drillId, Spot spot, PlayerType villain, StatLine villainStats,
+        IReadOnlyList<PlayerType> types, ulong seed)
+    {
+        var rng = Rng.ForLabel(seed, "seats:" + drillId);
+        var players = new List<SeatPlayer>();
+        foreach (var seat in Enum.GetValues<Position>())
+        {
+            if (seat == spot.HeroPosition) continue;
+            if (seat == spot.VillainPosition)
+            {
+                players.Add(new SeatPlayer(seat.ToString(), villain.Id, villainStats));
+                continue;
+            }
+            var type = StatSampler.PickByTableShare(types, rng);
+            players.Add(new SeatPlayer(seat.ToString(), type.Id, StatSampler.SampleUnambiguous(type, types, rng)));
+        }
+        return players;
     }
 
     /// <summary>Duplicate key: hand + board. Preflop spots have no board, so the seating takes its place.</summary>
@@ -133,6 +159,7 @@ public static class DrillGenerator
                 VillainStats = stats,
                 ActionHistory = [],
                 Actions = [],
+                Players = [],
                 HeroCards = [],
                 Board = [],
                 Question = IdentifyQuestion,
@@ -180,8 +207,9 @@ public static class DrillGenerator
         Enum.GetValues<DrawFlags>().Where(f => f != DrawFlags.None && (draws & f) != 0).Select(f => f.ToString()).ToArray();
 
     private static Drill ActionDrill(string id, Rule rule, LineTemplate template, StatLine stats, Spot spot,
-        IReadOnlyList<Card> hole, IReadOnlyList<Card> board, SpotFacts facts) => new()
+        IReadOnlyList<Card> hole, IReadOnlyList<Card> board, SpotFacts facts, IReadOnlyList<SeatPlayer> players) => new()
     {
+        Players = players,
         Id = id,
         RuleId = rule.Id,
         Kind = DrillKinds.Action,
@@ -228,7 +256,7 @@ public static class DrillGenerator
             .ToList();
 
     private static IReadOnlyList<TypeSummary> TypeSummaries(ContentSet content) =>
-        content.Types.Select(t => new TypeSummary(t.Id, t.Name, t.Description,
+        content.Types.Select(t => new TypeSummary(t.Id, t.Name, t.SeatLabel, t.Description,
             StatKeys.All.ToDictionary(k => k, k => new[] { t.Ranges[k].Min, t.Ranges[k].Max }))).ToList();
 }
 
