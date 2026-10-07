@@ -121,7 +121,7 @@ Rule matching = same line AND same villain type AND hand/board conditions.
 `web/public/drills.json`
 ```jsonc
 {
-  "schemaVersion": 1, "seed": 42,
+  "schemaVersion": 2, "seed": 42,
   "rules": [ { "id", "kind", "villainType", "line", "conditions", "correct", "reason", "placeholder" } ],
   "types": [ { "id", "name", "description", "ranges" } ],
   "drills": [ {
@@ -130,6 +130,9 @@ Rule matching = same line AND same villain type AND hand/board conditions.
     "villainType", "villainStats": { "VPIP": 52, "PFR": 6, "3Bet": 2, "WTSD": 38, "AF": 1.1, "FoldToCbet": 28 },
     "heroPosition", "villainPosition", "stacks": { "hero": 97.5, "villain": 97.5 }, "pot": 5.5, "toCall": 0,
     "actionHistory": [ "Preflop: ...", "Flop [Ks 7d 2c] (5.5bb): Villain checks." ],
+    // schemaVersion 2: the same story step by step for the table view. `to` = the seat's total in front
+    // of it on this street after the action; replaying the steps must give exactly pot/stacks/toCall.
+    "actions": [ { "street": "Preflop", "seat": "SB", "kind": "Post", "to": 0.5 }, { "street": "Flop", "seat": "BB", "kind": "Check", "to": 0 } ],
     "heroCards": ["As","Kd"], "board": ["Ks","7d","2c"],
     "question": "...", "options": [ { "id": "Bet33", "label": "Bet 33% (1.8bb)" } ],
     "correct": "Bet33", "reason": "...",

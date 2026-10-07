@@ -16,6 +16,14 @@ public enum LineId
     SRP_HeroIP_FacingRiverBet,
 }
 
+public enum ActionKind { Post, Fold, Limp, Raise, Call, Check, Bet }
+
+/// <summary>
+/// One action at the table, in order. <see cref="To"/> is the seat's total in front of it on this street
+/// after the action (0 for fold and check), so chips added = To minus the seat's previous total.
+/// </summary>
+public sealed record ActionStep(Street Street, Position Seat, ActionKind Kind, decimal To);
+
 /// <summary>Game constants and money helpers. All amounts are big blinds.</summary>
 public static class Stakes
 {
@@ -37,7 +45,10 @@ public static class Stakes
 
 public sealed record DrillOption(string Id, string Label);
 
-/// <summary>A fully built decision point. Stacks are what each player has behind at the decision.</summary>
+/// <summary>
+/// A fully built decision point. Stacks are what each player has behind at the decision.
+/// <see cref="Actions"/> is the same story as <see cref="ActionHistory"/>, step by step, for the table view.
+/// </summary>
 public sealed record Spot(
     LineId Line,
     Position HeroPosition,
@@ -47,6 +58,7 @@ public sealed record Spot(
     decimal HeroStack,
     decimal VillainStack,
     IReadOnlyList<string> ActionHistory,
+    IReadOnlyList<ActionStep> Actions,
     IReadOnlyList<DrillOption> Options);
 
 public abstract class LineTemplate
@@ -128,6 +140,28 @@ public abstract class LineTemplate
     protected static string StreetHeader(string street, IEnumerable<Card> cards, decimal pot) =>
         $"{street} [{CardList.Format(cards)}] ({Stakes.Bb(pot)}):";
 
+    // ---- shared action-step helpers ----
+
+    protected static List<ActionStep> PostBlinds() =>
+    [
+        new(Street.Preflop, Position.SB, ActionKind.Post, Stakes.SmallBlind),
+        new(Street.Preflop, Position.BB, ActionKind.Post, Stakes.BigBlind),
+    ];
+
+    protected static IEnumerable<ActionStep> FoldSteps(IEnumerable<Position> seats) =>
+        seats.Select(p => new ActionStep(Street.Preflop, p, ActionKind.Fold, 0m));
+
+    /// <summary>Blinds, folds, an open from <paramref name="opener"/>, folds (SB included), BB calls.</summary>
+    protected static List<ActionStep> OpenCalledByBigBlindSteps(Position opener)
+    {
+        var steps = PostBlinds();
+        steps.AddRange(FoldSteps(Before(opener)));
+        steps.Add(new ActionStep(Street.Preflop, opener, ActionKind.Raise, Stakes.OpenSize));
+        steps.AddRange(FoldSteps(Between(opener, Position.BB)));
+        steps.Add(new ActionStep(Street.Preflop, Position.BB, ActionKind.Call, Stakes.OpenSize));
+        return steps;
+    }
+
     protected static DrillOption BetOption(string id, int percent, decimal pot, decimal stack)
     {
         var amount = Stakes.Bet(pot, percent);
@@ -183,6 +217,11 @@ public sealed class IsoVsLimperLine : LineTemplate
                 $"{Seat("Villain", p.Villain)} limps {Stakes.Bb(LimpSize)}.",
                 Folds(Between(p.Villain, p.Hero))),
         };
+        var steps = PostBlinds();
+        steps.AddRange(FoldSteps(Before(p.Villain)));
+        steps.Add(new ActionStep(Street.Preflop, p.Villain, ActionKind.Limp, LimpSize));
+        steps.AddRange(FoldSteps(Between(p.Villain, p.Hero)));
+
         IReadOnlyList<DrillOption> options =
         [
             new("Fold", "Fold"),
@@ -190,7 +229,8 @@ public sealed class IsoVsLimperLine : LineTemplate
             new("Iso3", $"Raise to {Stakes.Bb(SmallIso)}"),
             new("Iso5", $"Raise to {Stakes.Bb(BigIso)}"),
         ];
-        return new Spot(Id, p.Hero, p.Villain, pot, LimpSize, Stakes.StartingStack, Stakes.StartingStack - LimpSize, history, options);
+        return new Spot(Id, p.Hero, p.Villain, pot, LimpSize, Stakes.StartingStack, Stakes.StartingStack - LimpSize,
+            history, steps, options);
     }
 }
 
@@ -226,13 +266,16 @@ public sealed class FlopVillainChecksLine : LineTemplate
             OpenCalledByBigBlind(p.Hero, "Hero", "Villain"),
             $"{StreetHeader("Flop", board, pot)} Villain checks.",
         };
+        var steps = OpenCalledByBigBlindSteps(p.Hero);
+        steps.Add(new ActionStep(Street.Flop, Position.BB, ActionKind.Check, 0m));
+
         IReadOnlyList<DrillOption> options =
         [
             new("Check", "Check"),
             BetOption("Bet33", 33, pot, stack),
             BetOption("Bet75", 75, pot, stack),
         ];
-        return new Spot(Id, p.Hero, Position.BB, pot, 0m, stack, stack, history, options);
+        return new Spot(Id, p.Hero, Position.BB, pot, 0m, stack, stack, history, steps, options);
     }
 }
 
@@ -272,7 +315,11 @@ public sealed class FacingFlopCbetLine : LineTemplate
             OpenCalledByBigBlind(p.Villain, "Villain", "Hero"),
             $"{StreetHeader("Flop", board, potBefore)} Hero checks. Villain bets {Stakes.Bb(bet)} ({p.BetPercent}%).",
         };
-        return new Spot(Id, Position.BB, p.Villain, potBefore + bet, bet, stack, stack - bet, history,
+        var steps = OpenCalledByBigBlindSteps(p.Villain);
+        steps.Add(new ActionStep(Street.Flop, Position.BB, ActionKind.Check, 0m));
+        steps.Add(new ActionStep(Street.Flop, p.Villain, ActionKind.Bet, bet));
+
+        return new Spot(Id, Position.BB, p.Villain, potBefore + bet, bet, stack, stack - bet, history, steps,
             FacingBetOptions(bet, stack));
     }
 }
@@ -310,16 +357,17 @@ public abstract class SrpToRiverLine : LineTemplate
         var pot = Stakes.SrpPot;
         var stack = Stakes.StartingStack - Stakes.OpenSize; // both players have the same behind throughout
         var history = new List<string> { OpenCalledByBigBlind(p.Hero, "Hero", "Villain") };
+        var steps = OpenCalledByBigBlindSteps(p.Hero);
 
         var flopHeader = StreetHeader("Flop", board.Take(3), pot);
-        history.Add($"{flopHeader} {Play(p.Flop, ref pot, ref stack)}");
+        history.Add($"{flopHeader} {Play(p.Flop, Street.Flop, p.Hero, ref pot, ref stack, steps)}");
         var turnHeader = StreetHeader("Turn", [board[3]], pot);
-        history.Add($"{turnHeader} {Play(p.Turn, ref pot, ref stack)}");
+        history.Add($"{turnHeader} {Play(p.Turn, Street.Turn, p.Hero, ref pot, ref stack, steps)}");
 
-        return BuildRiver(p, board[4], pot, stack, history);
+        return BuildRiver(p, board[4], pot, stack, history, steps);
     }
 
-    protected abstract Spot BuildRiver(Params p, Card river, decimal pot, decimal stack, List<string> history);
+    protected abstract Spot BuildRiver(Params p, Card river, decimal pot, decimal stack, List<string> history, List<ActionStep> steps);
 
     private static StreetPlay SamplePlay(Rng rng) => rng.NextInt(4) switch
     {
@@ -328,13 +376,21 @@ public abstract class SrpToRiverLine : LineTemplate
         _ => StreetPlay.Bet75Call,
     };
 
-    private static string Play(StreetPlay play, ref decimal pot, ref decimal stack)
+    private static string Play(StreetPlay play, Street street, Position hero, ref decimal pot, ref decimal stack, List<ActionStep> steps)
     {
-        if (play == StreetPlay.CheckThrough) return "Villain checks. Hero checks.";
+        steps.Add(new ActionStep(street, Position.BB, ActionKind.Check, 0m));
+        if (play == StreetPlay.CheckThrough)
+        {
+            steps.Add(new ActionStep(street, hero, ActionKind.Check, 0m));
+            return "Villain checks. Hero checks.";
+        }
+
         var percent = play == StreetPlay.Bet33Call ? 33 : 75;
         var bet = Math.Min(Stakes.Bet(pot, percent), stack);
         pot += 2 * bet;
         stack -= bet;
+        steps.Add(new ActionStep(street, hero, ActionKind.Bet, bet));
+        steps.Add(new ActionStep(street, Position.BB, ActionKind.Call, bet));
         return $"Villain checks. Hero bets {Stakes.Bb(bet)} ({percent}%). Villain calls.";
     }
 }
@@ -345,9 +401,10 @@ public sealed class RiverVillainChecksLine : SrpToRiverLine
     public override IReadOnlyList<string> OptionIds { get; } = ["Check", "Bet33", "Bet75", "Bet150"];
     public override string Question => "Villain checks the river. What do you do?";
 
-    protected override Spot BuildRiver(Params p, Card river, decimal pot, decimal stack, List<string> history)
+    protected override Spot BuildRiver(Params p, Card river, decimal pot, decimal stack, List<string> history, List<ActionStep> steps)
     {
         history.Add($"{StreetHeader("River", [river], pot)} Villain checks.");
+        steps.Add(new ActionStep(Street.River, Position.BB, ActionKind.Check, 0m));
         IReadOnlyList<DrillOption> options =
         [
             new("Check", "Check"),
@@ -355,7 +412,7 @@ public sealed class RiverVillainChecksLine : SrpToRiverLine
             BetOption("Bet75", 75, pot, stack),
             BetOption("Bet150", 150, pot, stack),
         ];
-        return new Spot(Id, p.Hero, Position.BB, pot, 0m, stack, stack, history, options);
+        return new Spot(Id, p.Hero, Position.BB, pot, 0m, stack, stack, history, steps, options);
     }
 }
 
@@ -367,11 +424,12 @@ public sealed class FacingRiverBetLine : SrpToRiverLine
     public override IReadOnlyList<string> OptionIds { get; } = ["Fold", "Call", "Raise"];
     public override string Question => "Villain bets the river. What do you do?";
 
-    protected override Spot BuildRiver(Params p, Card river, decimal pot, decimal stack, List<string> history)
+    protected override Spot BuildRiver(Params p, Card river, decimal pot, decimal stack, List<string> history, List<ActionStep> steps)
     {
         var bet = Math.Min(Stakes.Bet(pot, RiverBetPercent), stack);
         history.Add($"{StreetHeader("River", [river], pot)} Villain bets {Stakes.Bb(bet)} ({RiverBetPercent}%).");
-        return new Spot(Id, p.Hero, Position.BB, pot + bet, bet, stack, stack - bet, history,
+        steps.Add(new ActionStep(Street.River, Position.BB, ActionKind.Bet, bet));
+        return new Spot(Id, p.Hero, Position.BB, pot + bet, bet, stack, stack - bet, history, steps,
             FacingBetOptions(bet, stack));
     }
 }

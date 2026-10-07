@@ -165,6 +165,83 @@ public class LineTemplateTests
     }
 
     [Fact]
+    public void Action_steps_for_a_flop_spot()
+    {
+        var spot = new FlopVillainChecksLine().Build(new FlopVillainChecksLine.Params(Position.CO), Flop);
+        string[] expected =
+        [
+            "Preflop SB Post 0.5", "Preflop BB Post 1", "Preflop UTG Fold 0", "Preflop MP Fold 0", "Preflop CO Raise 2.5",
+            "Preflop BTN Fold 0", "Preflop SB Fold 0", "Preflop BB Call 2.5", "Flop BB Check 0",
+        ];
+        Assert.Equal(expected, spot.Actions.Select(a => Invariant($"{a.Street} {a.Seat} {a.Kind} {a.To}")));
+    }
+
+    [Fact]
+    public void Action_steps_replay_to_the_spot_pot_stacks_and_amount_to_call()
+    {
+        var rng = new Rng(21);
+        var deck = new Deck(rng);
+        foreach (var template in LineTemplate.All.Values)
+        {
+            for (var i = 0; i < 300; i++)
+            {
+                deck.Reset();
+                var spot = template.Build(rng, deck.Deal(template.BoardCardCount));
+                var r = Replay(spot);
+
+                Assert.Equal(spot.Pot, r.Pot);
+                Assert.Equal(spot.HeroStack, r.Stacks[spot.HeroPosition]);
+                Assert.Equal(spot.VillainStack, r.Stacks[spot.VillainPosition]);
+                Assert.Equal(spot.ToCall, r.ToCall);
+                Assert.DoesNotContain(spot.HeroPosition, r.Folded);
+                Assert.DoesNotContain(spot.VillainPosition, r.Folded);
+                Assert.Equal(template.DecisionStreet, spot.Actions[^1].Street);
+                if (template.DecisionStreet != Street.Preflop) Assert.Equal(4, r.Folded.Count); // heads-up after preflop
+            }
+        }
+    }
+
+    /// <summary>Plays the steps like a table: chips in front move to the pot when the street changes.</summary>
+    private static (decimal Pot, Dictionary<Position, decimal> Stacks, decimal ToCall, HashSet<Position> Folded) Replay(Spot spot)
+    {
+        var seats = Enum.GetValues<Position>();
+        var stacks = seats.ToDictionary(p => p, _ => Stakes.StartingStack);
+        var inFront = seats.ToDictionary(p => p, _ => 0m);
+        var folded = new HashSet<Position>();
+        var pot = 0m;
+        var street = Street.Preflop;
+
+        foreach (var a in spot.Actions)
+        {
+            Assert.True(a.Street >= street, "streets never go backwards");
+            Assert.DoesNotContain(a.Seat, folded);
+            if (a.Street != street)
+            {
+                pot += inFront.Values.Sum();
+                foreach (var p in seats) inFront[p] = 0m;
+                street = a.Street;
+            }
+
+            switch (a.Kind)
+            {
+                case ActionKind.Fold:
+                    folded.Add(a.Seat);
+                    break;
+                case ActionKind.Check:
+                    Assert.Equal(inFront.Values.Max(), inFront[a.Seat]); // can't check facing a bet
+                    break;
+                default:
+                    Assert.True(a.To > inFront[a.Seat], $"{a} must add chips");
+                    stacks[a.Seat] -= a.To - inFront[a.Seat];
+                    inFront[a.Seat] = a.To;
+                    break;
+            }
+        }
+
+        return (pot + inFront.Values.Sum(), stacks, inFront.Values.Max() - inFront[spot.HeroPosition], folded);
+    }
+
+    [Fact]
     public void Templates_reject_wrong_board_size()
     {
         Assert.Throws<ArgumentException>(() => LineTemplate.For(LineId.SRP_HeroIP_FlopVillainChecks).Build(new Rng(1), River));

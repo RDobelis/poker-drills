@@ -7,7 +7,7 @@ const SUITS: Record<string, { symbol: string; red: boolean; name: string }> = {
 
 const RANK_NAMES: Record<string, string> = { T: '10', J: 'Jack', Q: 'Queen', K: 'King', A: 'Ace' };
 
-type Size = 'mini' | 'normal' | 'big';
+type Size = 'mini' | 'table' | 'hero' | 'normal' | 'big';
 
 /** One card from a code like "As" or "Td": rank plus suit symbol, red for hearts and diamonds. */
 export function PlayingCard({ code, size = 'normal' }: { code: string; size?: Size }) {

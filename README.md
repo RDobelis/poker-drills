@@ -160,6 +160,10 @@ Full definitions are in [PLAN.md](PLAN.md). The interpretation calls:
 
 ## Web app behaviour
 
+- **Table view**: action drills are shown on a 6-max table with hero at the bottom. Every seat shows its
+  position, stack and last action; villain's seat carries the player-type badge; bets sit in front of the
+  seats and the pot and board in the middle. The action before hero's decision replays step by step (Skip /
+  Replay buttons; no animation with reduced-motion settings). The text hand history is under the answers.
 - **Session**: due reviews first (most overdue, lowest box), then new drills taken round-robin over the
   rules, least-practised first (all identification drills share one slot). At most 3 drills per rule; the
   order never puts two drills from the same rule next to each other and prefers alternating villain types

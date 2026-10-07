@@ -1,6 +1,7 @@
 import type { Drill, StatLine } from '../types';
-import { CardRow, TextWithCards } from './Cards';
-import { STAT_LABELS, bb, lineLabel } from './labels';
+import { TextWithCards } from './Cards';
+import { PokerTable } from './PokerTable';
+import { STAT_LABELS, lineLabel } from './labels';
 
 interface Props {
   drill: Drill;
@@ -26,59 +27,12 @@ export function DrillView({ drill, typeName, chosen, review = false, onChoose }:
         <span className="line-label">{lineLabel(drill.line)}</span>
       </div>
 
-      <StatGrid stats={drill.villainStats} />
+      <StatGrid stats={drill.villainStats} compact={!isIdentify} />
 
-      {!isIdentify && (
-        <>
-          <dl className="table-info">
-            <div>
-              <dt>Positions</dt>
-              <dd>
-                Hero <b>{drill.heroPosition}</b> vs Villain <b>{drill.villainPosition}</b>
-              </dd>
-            </div>
-            <div>
-              <dt>Stacks</dt>
-              <dd>
-                Hero <b>{bb(drill.stacks?.hero ?? 0)}</b> · Villain <b>{bb(drill.stacks?.villain ?? 0)}</b>
-              </dd>
-            </div>
-            <div>
-              <dt>Pot</dt>
-              <dd>
-                <b>{bb(drill.pot ?? 0)}</b>
-                {drill.toCall ? (
-                  <>
-                    {' '}
-                    · to call <b>{bb(drill.toCall)}</b>
-                  </>
-                ) : null}
-              </dd>
-            </div>
-          </dl>
-
-          <ol className="history">
-            {drill.actionHistory.map((line, i) => (
-              <li key={i}>
-                <HistoryLine text={line} />
-              </li>
-            ))}
-          </ol>
-
-          {drill.board.length > 0 && (
-            <div className="board" aria-label="Board">
-              <CardRow codes={drill.board} />
-            </div>
-          )}
-          <div className="hero-hand">
-            <span className="small muted">Your hand</span>
-            <CardRow codes={drill.heroCards} size="big" />
-          </div>
-        </>
-      )}
+      {!isIdentify && <PokerTable drill={drill} typeName={typeName} autoPlay={!review} answered={revealed} />}
 
       <h2 className="question">{drill.question}</h2>
-      <div className="options">
+      <div className={`options${isIdentify ? '' : ' options-grid'}`}>
         {drill.options.map((o) => {
           const isCorrect = o.id === drill.correct;
           const isChosen = o.id === chosen;
@@ -100,15 +54,28 @@ export function DrillView({ drill, typeName, chosen, review = false, onChoose }:
         })}
       </div>
 
+      {!isIdentify && (
+        <details className="history-details" open={review}>
+          <summary>Hand history</summary>
+          <ol className="history">
+            {drill.actionHistory.map((line, i) => (
+              <li key={i}>
+                <HistoryLine text={line} />
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
+
       {review && <Facts drill={drill} />}
     </article>
   );
 }
 
-function StatGrid({ stats }: { stats: StatLine }) {
+function StatGrid({ stats, compact }: { stats: StatLine; compact: boolean }) {
   const values = stats as unknown as Record<string, number>;
   return (
-    <dl className="stats">
+    <dl className={`stats${compact ? ' compact' : ''}`} aria-label="Villain HUD stats">
       {STAT_LABELS.map(([key, label]) => (
         <div key={key} className="stat">
           <dt>{label}</dt>

@@ -25,6 +25,14 @@ export interface DrillFacts {
   hand: string | null;
 }
 
+/** One step of the hand. `to` = the seat's total in front of it on this street after the action. */
+export interface DrillAction {
+  street: 'Preflop' | 'Flop' | 'Turn' | 'River';
+  seat: 'UTG' | 'MP' | 'CO' | 'BTN' | 'SB' | 'BB';
+  kind: 'Post' | 'Fold' | 'Limp' | 'Raise' | 'Call' | 'Check' | 'Bet';
+  to: number;
+}
+
 export interface Drill {
   id: string;
   ruleId: string;
@@ -38,6 +46,7 @@ export interface Drill {
   pot: number | null;
   toCall: number | null;
   actionHistory: string[];
+  actions: DrillAction[];
   heroCards: string[];
   board: string[];
   question: string;

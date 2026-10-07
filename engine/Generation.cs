@@ -22,7 +22,7 @@ public sealed record GenerationResult(DrillFile File, IReadOnlyList<RuleReport> 
 
 public static class DrillGenerator
 {
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 2; // 2: drills carry step-by-step `actions` for the table view
     public const string IdentifyLine = "Identify";
     public const string IdentifyQuestion = "Which player type is this?";
 
@@ -132,6 +132,7 @@ public static class DrillGenerator
                 VillainType = type.Id,
                 VillainStats = stats,
                 ActionHistory = [],
+                Actions = [],
                 HeroCards = [],
                 Board = [],
                 Question = IdentifyQuestion,
@@ -193,6 +194,9 @@ public static class DrillGenerator
         Pot = (double)spot.Pot,
         ToCall = (double)spot.ToCall,
         ActionHistory = spot.ActionHistory,
+        Actions = spot.Actions
+            .Select(a => new DrillAction(a.Street.ToString(), a.Seat.ToString(), a.Kind.ToString(), (double)a.To))
+            .ToList(),
         HeroCards = hole.Select(c => c.ToString()).ToList(),
         Board = board.Select(c => c.ToString()).ToList(),
         Question = template.Question,

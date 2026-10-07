@@ -11,6 +11,9 @@ public static class DrillKinds
 
 public sealed record Stacks(double Hero, double Villain);
 
+/// <summary>One step of the hand for the table view. <c>To</c> = seat's total in front of it on this street.</summary>
+public sealed record DrillAction(string Street, string Seat, string Kind, double To);
+
 /// <summary>Classifier output stored with each drill so a coach can audit the mechanics.</summary>
 public sealed record DrillFacts(
     string? HandClass,
@@ -34,6 +37,7 @@ public sealed record Drill
     public double? Pot { get; init; }
     public double? ToCall { get; init; }
     public required IReadOnlyList<string> ActionHistory { get; init; }
+    public required IReadOnlyList<DrillAction> Actions { get; init; }
     public required IReadOnlyList<string> HeroCards { get; init; }
     public required IReadOnlyList<string> Board { get; init; }
     public required string Question { get; init; }
