@@ -3,7 +3,7 @@ import type { DrillFile } from './types';
 import { Review } from './pages/Review';
 import { Trainer } from './pages/Trainer';
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 /** Coach page: "#review" works on any static host; "/review" also works on the dev server. */
 function isReviewRoute(): boolean {

@@ -30,7 +30,10 @@ public class GeneratorTests
             Assert.Equal(template.BoardCardCount, board.Length);
             CardList.EnsureDistinct(hole.Concat(board));
             var facts = SpotFacts.Analyze(hole, board, ClassifierOptions.Default);
-            Assert.True(RuleMatcher.Matches(rule, d.VillainType, rule.Line, facts), $"{d.Id} does not match {rule.Id}");
+            var behindTypes = DrillGenerator.BehindTypes(d);
+            Assert.True(RuleMatcher.Matches(rule, d.VillainType, rule.Line, facts, behindTypes), $"{d.Id} does not match {rule.Id}");
+            Assert.Equal(behindTypes.Count, d.Behind.Count);
+            Assert.Equal(template.CanHavePlayersBehind, d.Behind.Count > 0); // blinds are always left to act preflop
 
             Assert.Equal(rule.Line.ToString(), d.Line);
             Assert.Equal(rule.Correct, d.Correct);
@@ -141,7 +144,9 @@ public class GeneratorTests
     public void Seat_types_follow_table_shares_and_never_change_the_drills()
     {
         var content = TestHelpers.Content;
-        var drills = FullRun.Value.File.Drills.Where(d => d.Kind == DrillKinds.Action).ToList();
+        // Rules about the players behind pick their seating on purpose, so only the others show the plain mix.
+        var plainRules = content.Rules.Where(r => !r.HasBehindConditions).Select(r => r.Id).ToHashSet();
+        var drills = FullRun.Value.File.Drills.Where(d => d.Kind == DrillKinds.Action && plainRules.Contains(d.RuleId)).ToList();
         var others = drills.SelectMany(d => d.Players.Where(p => p.Seat != d.VillainPosition)).ToList();
         var totalShare = (double)content.Types.Sum(t => t.TableShare);
         foreach (var t in content.Types)
@@ -152,13 +157,52 @@ public class GeneratorTests
 
         // Who sits around the table must not change a single card, action or drill id.
         var maniacTable = content with { Types = content.Types.Select(t => t with { TableShare = t.Id == "Maniac" ? 100 : 1 }).ToList() };
-        var a = DrillGenerator.Generate(content, Small).File.Drills;
-        var b = DrillGenerator.Generate(maniacTable, Small).File.Drills;
+        var a = DrillGenerator.Generate(content, Small).File.Drills.Where(d => plainRules.Contains(d.RuleId)).ToList();
+        var b = DrillGenerator.Generate(maniacTable, Small).File.Drills.Where(d => plainRules.Contains(d.RuleId)).ToList();
         Assert.Equal(a.Select(d => d.Id), b.Select(d => d.Id));
         Assert.Equal(a.Select(Spot), b.Select(Spot));
         Assert.NotEqual(a.SelectMany(d => d.Players.Select(p => p.Type)), b.SelectMany(d => d.Players.Select(p => p.Type)));
 
         static string Spot(Drill d) => string.Join(",", d.HeroCards.Concat(d.Board).Concat(d.ActionHistory));
+    }
+
+    [Fact]
+    public void Rules_about_players_behind_get_exactly_that_seating()
+    {
+        var drills = FullRun.Value.File.Drills;
+        var withManiac = drills.Where(d => d.RuleId == "station-iso-playable-maniac-behind").ToList();
+        var withoutManiac = drills.Where(d => d.RuleId == "station-iso-playable").ToList();
+        Assert.True(withManiac.Count >= 150 && withoutManiac.Count >= 150);
+        Assert.All(withManiac, d => Assert.Contains("Maniac", DrillGenerator.BehindTypes(d)));
+        Assert.All(withoutManiac, d => Assert.DoesNotContain("Maniac", DrillGenerator.BehindTypes(d)));
+        Assert.Contains("left to act behind you: Maniac",
+            FullRun.Value.File.Rules.Single(r => r.Id == "station-iso-playable-maniac-behind").Conditions);
+    }
+
+    [Fact]
+    public void Conflict_checker_sees_players_behind()
+    {
+        var content = TestHelpers.Content;
+        Rule Iso(string id, string correct, string[] require, string[] exclude) => new()
+        {
+            Id = id,
+            VillainType = "CallingStation",
+            Line = LineId.Pre_IsoVsLimper,
+            HeroGroup = [HandGroup.Playable],
+            BehindRequire = require,
+            BehindExclude = exclude,
+            Correct = correct,
+            Reason = "test",
+        };
+        var general = Iso("test-general", "Iso5", [], []);
+        var maniacBehind = Iso("test-maniac", "Fold", ["Maniac"], []);
+        var generalWithoutManiac = Iso("test-general", "Iso5", [], ["Maniac"]);
+
+        var clash = DrillGenerator.Generate(content with { Rules = [general, maniacBehind] }, Small);
+        Assert.Contains(clash.Conflicts, c => c.RuleId == "test-general" && c.OtherRuleId == "test-maniac");
+
+        var fixedByExclude = DrillGenerator.Generate(content with { Rules = [generalWithoutManiac, maniacBehind] }, Small);
+        Assert.Empty(fixedByExclude.Conflicts);
     }
 
     [Fact]
@@ -180,7 +224,7 @@ public class GeneratorTests
         // The example really is matched by both rules.
         var facts = SpotFacts.Analyze(conflict.Example.HeroCards.Select(Card.Parse).ToArray(),
             conflict.Example.Board.Select(Card.Parse).ToArray(), ClassifierOptions.Default);
-        Assert.True(RuleMatcher.Matches(check, conflict.Example.VillainType, check.Line, facts));
+        Assert.True(RuleMatcher.Matches(check, conflict.Example.VillainType, check.Line, facts, DrillGenerator.BehindTypes(conflict.Example)));
         Assert.Contains(result.Reports, r => r.RuleId == "test-check" && r.Conflicts > 0);
     }
 

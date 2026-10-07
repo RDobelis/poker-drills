@@ -1,0 +1,10 @@
+{
+  "id": "station-iso-playable-maniac-behind",
+  "placeholder": true,
+  "villainType": "CallingStation",
+  "line": "Pre_IsoVsLimper",
+  "heroGroup": ["Playable"],
+  "behind": { "require": ["Maniac"] },
+  "correct": "Fold",
+  "reason": "A maniac left to act squeezes iso-raises constantly, and playable hands can't call a 3-bet. Let them go."
+}

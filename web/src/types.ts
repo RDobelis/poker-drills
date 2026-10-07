@@ -55,6 +55,8 @@ export interface Drill {
   actionHistory: string[];
   actions: DrillAction[];
   players: SeatPlayer[];
+  /** Seats still to act after hero at the decision (empty postflop). */
+  behind: DrillAction['seat'][];
   heroCards: string[];
   board: string[];
   question: string;

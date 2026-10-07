@@ -55,6 +55,16 @@ export function DrillView({ drill, typeName, chosen, review = false, onChoose }:
           onSelectSeat={setHudSeat}
         />
       )}
+      {drill.behind.length > 0 && (
+        <p className="behind-line">
+          Left to act behind you:{' '}
+          <b>
+            {drill.behind
+              .map((s) => `${typeName(drill.players.find((p) => p.seat === s)?.type ?? '?', true)} (${s})`)
+              .join(', ')}
+          </b>
+        </p>
+      )}
 
       <h2 className="question">{drill.question}</h2>
       <div className={`options${isIdentify ? '' : ' options-grid'}`}>
@@ -143,6 +153,12 @@ function Facts({ drill }: { drill: Drill }) {
             {f.handGroup ? ` · ${f.handGroup}` : ''}
             {f.handClass ? ` · ${f.handClass}` : ''}
           </dd>
+        </div>
+      )}
+      {drill.behind.length > 0 && (
+        <div>
+          <dt>Behind</dt>
+          <dd>{drill.behind.map((s) => `${s} ${drill.players.find((p) => p.seat === s)?.type ?? '?'}`).join(', ')}</dd>
         </div>
       )}
       {f && drill.board.length > 0 && (

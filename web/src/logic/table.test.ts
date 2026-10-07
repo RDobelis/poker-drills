@@ -62,6 +62,25 @@ describe('table replay of the generated drills', () => {
     }
   });
 
+  it('marks as behind exactly the seats still to act after hero, each with a seated player', () => {
+    for (const d of actionDrills) {
+      const end = tableAt(d, buildFrames(d).at(-1)!);
+      const heroIndex = SEATS.indexOf(d.heroPosition as Seat);
+      const expected = SEATS.filter((s, i) => i > heroIndex && !d.actions.some((a) => a.seat === s && a.kind !== 'Post'));
+      expect(d.behind, d.id).toEqual(expected);
+      for (const s of d.behind) {
+        expect(end.seats[s].folded, d.id).toBe(false);
+        expect(d.players.some((p) => p.seat === s), d.id).toBe(true);
+      }
+      if (d.board.length > 0) expect(d.behind, d.id).toEqual([]); // postflop everyone else is out
+    }
+    const maniacBehind = actionDrills.filter((d) => d.ruleId === 'station-iso-playable-maniac-behind');
+    expect(maniacBehind.length).toBeGreaterThan(0);
+    for (const d of maniacBehind) {
+      expect(d.behind.some((s) => d.players.find((p) => p.seat === s)?.type === 'Maniac'), d.id).toBe(true);
+    }
+  });
+
   it('seats hero at the bottom and goes clockwise', () => {
     expect(slotOf('CO', 'CO')).toBe(0);
     expect(slotOf('BTN', 'CO')).toBe(1);

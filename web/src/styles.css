@@ -526,6 +526,18 @@ textarea:focus-visible {
   font-weight: 800;
   color: var(--warn);
 }
+.behind-line {
+  margin: -6px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.behind-line b {
+  color: var(--text);
+}
+.seat.left-to-act .seat-box {
+  border-style: dashed;
+  border-color: #cfe3d8;
+}
 
 .seat {
   position: absolute;

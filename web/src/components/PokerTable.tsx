@@ -85,6 +85,7 @@ export function PokerTable({ drill, typeName, autoPlay, answered, selectedSeat =
   const atEnd = index === last;
   const toCall = toCallFor(table, hero);
   const acting = new Set(table.acted.map((a) => a.seat));
+  const behind = new Set<string>(drill.behind);
 
   const replay = () => {
     setIndex(0);
@@ -128,6 +129,7 @@ export function PokerTable({ drill, typeName, autoPlay, answered, selectedSeat =
           heroCards={drill.heroCards}
           acting={acting.has(seat)}
           toAct={seat === hero && atEnd && !answered}
+          leftToAct={atEnd && behind.has(seat)}
           selected={seat === selectedSeat}
           onSelect={onSelectSeat}
         />
@@ -156,11 +158,13 @@ interface SeatProps {
   heroCards: string[];
   acting: boolean;
   toAct: boolean;
+  /** Still to act after hero's decision. */
+  leftToAct: boolean;
   selected: boolean;
   onSelect?: (seat: Seat) => void;
 }
 
-function SeatView({ seat, slot, state, role, player, typeName, heroCards, acting, toAct, selected, onSelect }: SeatProps) {
+function SeatView({ seat, slot, state, role, player, typeName, heroCards, acting, toAct, leftToAct, selected, onSelect }: SeatProps) {
   const classes = [
     'seat',
     `seat-slot-${slot}`,
@@ -168,6 +172,7 @@ function SeatView({ seat, slot, state, role, player, typeName, heroCards, acting
     state.folded && 'folded',
     acting && 'acting',
     toAct && 'to-act',
+    leftToAct && 'left-to-act',
     selected && 'selected',
   ]
     .filter(Boolean)

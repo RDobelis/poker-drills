@@ -11,7 +11,10 @@ public class PlayerTypeAndContentTests
     {
         var content = TestHelpers.Content;
         Assert.Equal(["Nit", "CallingStation", "Maniac", "Overfolder", "Reg"], content.Types.Select(t => t.Id));
-        Assert.Equal(9, content.Rules.Count);
+        Assert.Equal(11, content.Rules.Count);
+        var maniacBehind = content.Rules.Single(r => r.Id == "station-iso-playable-maniac-behind");
+        Assert.Equal(["Maniac"], maniacBehind.BehindRequire);
+        Assert.Empty(maniacBehind.BehindExclude);
 
         var rule = content.Rules.Single(r => r.Id == "station-river-value");
         Assert.Equal(LineId.SRP_HeroIP_RiverVillainChecks, rule.Line);
@@ -82,6 +85,25 @@ public class PlayerTypeAndContentTests
         Assert.NotEqual(ValidRule, json);
         var e = Assert.Throws<ContentException>(() => Parse(json));
         Assert.Contains(expectedInMessage, e.Message);
+    }
+
+    [Theory]
+    [InlineData("\"behind\": { \"require\": [\"Shark\"] }", "behind.require: 'Shark'")]
+    [InlineData("\"behind\": { \"require\": [\"Maniac\"], \"exclude\": [\"maniac\"] }", "both required and excluded")]
+    public void Behind_conditions_are_validated(string behind, string expected)
+    {
+        var json = $$"""
+            { "id": "p", "villainType": "CallingStation", "line": "Pre_IsoVsLimper", "heroGroup": ["Playable"],
+              {{behind}}, "correct": "Fold", "reason": "r" }
+            """;
+        Assert.Contains(expected, Assert.Throws<ContentException>(() => Parse(json)).Message);
+    }
+
+    [Fact]
+    public void Behind_conditions_only_apply_preflop()
+    {
+        var json = ValidRule.Replace("\"reason\": \"r\"", "\"reason\": \"r\", \"behind\": { \"exclude\": [\"Maniac\"] }");
+        Assert.Contains("only apply to preflop", Assert.Throws<ContentException>(() => Parse(json)).Message);
     }
 
     [Fact]

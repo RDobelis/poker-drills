@@ -42,6 +42,9 @@ public sealed record Drill
     public required IReadOnlyList<string> ActionHistory { get; init; }
     public required IReadOnlyList<DrillAction> Actions { get; init; }
     public required IReadOnlyList<SeatPlayer> Players { get; init; }
+
+    /// <summary>Seats still to act after hero at the decision (empty postflop).</summary>
+    public required IReadOnlyList<string> Behind { get; init; }
     public required IReadOnlyList<string> HeroCards { get; init; }
     public required IReadOnlyList<string> Board { get; init; }
     public required string Question { get; init; }

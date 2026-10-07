@@ -24,6 +24,20 @@ public enum ActionKind { Post, Fold, Limp, Raise, Call, Check, Bet }
 /// </summary>
 public sealed record ActionStep(Street Street, Position Seat, ActionKind Kind, decimal To);
 
+public static class TableSeating
+{
+    /// <summary>
+    /// Seats still to act after hero at the decision: after hero in preflop order, not folded, and with no
+    /// voluntary action yet (posting a blind doesn't count). Postflop this is empty: everyone else has folded
+    /// and villain has already acted.
+    /// </summary>
+    public static IReadOnlyList<Position> SeatsBehind(Position hero, IEnumerable<ActionStep> actions)
+    {
+        var acted = actions.Where(a => a.Kind != ActionKind.Post).Select(a => a.Seat).ToHashSet();
+        return Enum.GetValues<Position>().Where(p => p > hero && !acted.Contains(p)).ToList();
+    }
+}
+
 /// <summary>Game constants and money helpers. All amounts are big blinds.</summary>
 public static class Stakes
 {
@@ -67,6 +81,9 @@ public abstract class LineTemplate
     public abstract Street DecisionStreet { get; }
     public abstract IReadOnlyList<string> OptionIds { get; }
     public abstract string Question { get; }
+
+    /// <summary>Whether players can still be left to act behind hero at the decision (only preflop spots).</summary>
+    public bool CanHavePlayersBehind => DecisionStreet == Street.Preflop;
 
     public int BoardCardCount => DecisionStreet switch
     {

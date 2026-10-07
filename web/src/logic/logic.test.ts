@@ -43,6 +43,7 @@ function drill(id: string, ruleId: string, villainType = 'Nit', line = 'L', kind
     actionHistory: [],
     actions: [],
     players: [],
+    behind: [],
     heroCards: [],
     board: [],
     question: 'q',

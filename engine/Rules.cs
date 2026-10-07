@@ -30,6 +30,15 @@ public sealed record Rule
     public DrawRequirement Draws { get; init; }
     public BoardFlags BoardRequire { get; init; }
     public BoardFlags BoardExclude { get; init; }
+
+    /// <summary>Player types that must all be among the players left to act behind hero.</summary>
+    public IReadOnlyList<string> BehindRequire { get; init; } = [];
+
+    /// <summary>Player types that may not be among the players left to act behind hero.</summary>
+    public IReadOnlyList<string> BehindExclude { get; init; } = [];
+
+    public bool HasBehindConditions => BehindRequire.Count > 0 || BehindExclude.Count > 0;
+
     public required string Correct { get; init; }
     public required string Reason { get; init; }
 }
@@ -49,8 +58,19 @@ public sealed record SpotFacts(HandClass? HandClass, DrawFlags Draws, BoardFlags
 
 public static class RuleMatcher
 {
-    /// <summary>A rule matches when line, villain type and every hand/board condition match.</summary>
-    public static bool Matches(Rule rule, string villainType, LineId line, SpotFacts facts)
+    /// <summary>
+    /// A rule matches when line, villain type, every hand/board condition and the players left to act
+    /// behind hero (<paramref name="behindTypes"/>: their player types) all match.
+    /// </summary>
+    public static bool Matches(Rule rule, string villainType, LineId line, SpotFacts facts, IReadOnlyCollection<string> behindTypes) =>
+        MatchesCards(rule, villainType, line, facts) && MatchesBehind(rule, behindTypes);
+
+    /// <summary>Every required type is behind hero and no excluded type is.</summary>
+    public static bool MatchesBehind(Rule rule, IReadOnlyCollection<string> behindTypes) =>
+        rule.BehindRequire.All(behindTypes.Contains) && !rule.BehindExclude.Any(behindTypes.Contains);
+
+    /// <summary>Everything except the players behind: line, villain type, hand and board.</summary>
+    public static bool MatchesCards(Rule rule, string villainType, LineId line, SpotFacts facts)
     {
         if (rule.Line != line || rule.VillainType != villainType) return false;
 

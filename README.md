@@ -115,6 +115,11 @@ type is part of the match.
   - Postflop: `"hero": { "minStrength": ..., "maxStrength": ... }`, `"draws": null | "none"`,
     `"boardRequire"` / `"boardExclude"` (board flag names).
   - Preflop: `"heroGroup": ["Premium", "Strong", "Playable", "Trash"]` instead of `hero`.
+  - Preflop, optional: `"behind": { "require": ["Maniac"], "exclude": ["Nit"] }` reacts to the players left to
+    act after hero: every `require` type must be among them, no `exclude` type may be. (Postflop nobody is
+    behind hero, so the loader rejects it there.) When a general rule and a "behind" rule overlap with
+    different answers, the conflict checker flags it; add an `exclude` to the general rule, as
+    `station-iso-playable` does.
   - `correct` must be one of the line's options.
 
 The loader is strict: unknown properties (typos), unknown names, a `correct` answer the line does not
@@ -165,8 +170,9 @@ Full definitions are in [PLAN.md](PLAN.md). The interpretation calls:
 - **Table view**: action drills are shown on a 6-max table with hero at the bottom. Every seat shows its
   position, stack, last action and the type of the player sitting there (drawn by `tableShare`, each with
   its own HUD line); villain's seat is marked "VS". Tapping a seat shows that player's HUD stats. Bets sit in
-  front of the seats and the pot and board in the middle. For now the other seats are labels only: their
-  actions and the rules don't depend on them yet. The action before hero's decision replays step by step (Skip /
+  front of the seats and the pot and board in the middle. Players still to act after hero get a dashed
+  outline and are listed under the table ("Left to act behind you"); rules can react to them via `behind`.
+  The other players' actions don't depend on their type yet. The action before hero's decision replays step by step (Skip /
   Replay buttons; no animation with reduced-motion settings). The text hand history is under the answers.
 - **Session**: due reviews first (most overdue, lowest box), then new drills taken round-robin over the
   rules, least-practised first (all identification drills share one slot). At most 3 drills per rule; the

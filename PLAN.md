@@ -121,7 +121,7 @@ Rule matching = same line AND same villain type AND hand/board conditions.
 `web/public/drills.json`
 ```jsonc
 {
-  "schemaVersion": 3, "seed": 42,
+  "schemaVersion": 4, "seed": 42,
   "rules": [ { "id", "kind", "villainType", "line", "conditions", "correct", "reason", "placeholder" } ],
   "types": [ { "id", "name", "description", "ranges" } ],
   "drills": [ {
@@ -136,6 +136,9 @@ Rule matching = same line AND same villain type AND hand/board conditions.
     // schemaVersion 3: who sits where (every seat but hero's). Villain = rule type + villainStats; other seats
     // drawn by types[].tableShare from a separate RNG stream keyed by the drill id, so cards/action/ids never change.
     "players": [ { "seat": "UTG", "type": "Nit", "stats": { "VPIP": 13, "PFR": 11, "3Bet": 3, "WTSD": 22, "AF": 2.4, "FoldToCbet": 58 } } ],
+    // schemaVersion 4: seats still to act after hero (no voluntary action yet; empty postflop). Rules can
+    // require/exclude player types among them ("behind"); the seating is drawn per attempt, before the rule check.
+    "behind": [ "SB", "BB" ],
     "heroCards": ["As","Kd"], "board": ["Ks","7d","2c"],
     "question": "...", "options": [ { "id": "Bet33", "label": "Bet 33% (1.8bb)" } ],
     "correct": "Bet33", "reason": "...",

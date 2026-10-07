@@ -241,6 +241,32 @@ public class LineTemplateTests
         return (pot + inFront.Values.Sum(), stacks, inFront.Values.Max() - inFront[spot.HeroPosition], folded);
     }
 
+    [Theory]
+    [InlineData(Position.MP, Position.CO, "BTN,SB,BB")]
+    [InlineData(Position.MP, Position.BTN, "SB,BB")] // CO folded in between
+    [InlineData(Position.CO, Position.BTN, "SB,BB")]
+    public void Seats_behind_hero_preflop_are_those_still_to_act(Position villain, Position hero, string expected)
+    {
+        var spot = new IsoVsLimperLine().Build(new IsoVsLimperLine.Params(villain, hero));
+        Assert.Equal(expected, string.Join(",", TableSeating.SeatsBehind(spot.HeroPosition, spot.Actions)));
+    }
+
+    [Fact]
+    public void Nobody_is_behind_hero_postflop()
+    {
+        var rng = new Rng(4);
+        var deck = new Deck(rng);
+        foreach (var template in LineTemplate.All.Values.Where(t => !t.CanHavePlayersBehind))
+        {
+            for (var i = 0; i < 50; i++)
+            {
+                deck.Reset();
+                var spot = template.Build(rng, deck.Deal(template.BoardCardCount));
+                Assert.Empty(TableSeating.SeatsBehind(spot.HeroPosition, spot.Actions));
+            }
+        }
+    }
+
     [Fact]
     public void Templates_reject_wrong_board_size()
     {

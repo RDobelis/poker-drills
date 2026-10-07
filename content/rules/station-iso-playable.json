@@ -1,0 +1,10 @@
+{
+  "id": "station-iso-playable",
+  "placeholder": true,
+  "villainType": "CallingStation",
+  "line": "Pre_IsoVsLimper",
+  "heroGroup": ["Playable"],
+  "behind": { "exclude": ["Maniac"] },
+  "correct": "Iso5",
+  "reason": "With no maniac left to act, playable hands love a heads-up pot against a station. Isolate big."
+}

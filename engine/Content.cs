@@ -215,6 +215,13 @@ public static partial class ContentLoader
                 errors.Add($"flags both required and excluded: {string.Join(", ", BoardAnalyzer.Names(require & exclude))}");
         }
 
+        var behindRequire = TypeIds(dto.Behind?.Require, "behind.require", types, errors);
+        var behindExclude = TypeIds(dto.Behind?.Exclude, "behind.exclude", types, errors);
+        if (behindRequire.Intersect(behindExclude).Any())
+            errors.Add($"behind: {string.Join(", ", behindRequire.Intersect(behindExclude))} both required and excluded");
+        if (template is { CanHavePlayersBehind: false } && (behindRequire.Count > 0 || behindExclude.Count > 0))
+            errors.Add($"behind: nobody is left to act behind hero in {template.Id}; behind conditions only apply to preflop spots");
+
         if (template is not null && (dto.Correct is null || !template.OptionIds.Contains(dto.Correct)))
             errors.Add($"correct '{dto.Correct}' is not an option of {template.Id}: {string.Join(", ", template.OptionIds)}");
         if (string.IsNullOrWhiteSpace(dto.Reason)) errors.Add("reason is required");
@@ -232,9 +239,24 @@ public static partial class ContentLoader
             Draws = draws,
             BoardRequire = require,
             BoardExclude = exclude,
+            BehindRequire = behindRequire,
+            BehindExclude = behindExclude,
             Correct = dto.Correct!,
             Reason = dto.Reason!.Trim(),
         };
+    }
+
+    /// <summary>Player type names (case-insensitive) mapped to their ids; unknown names are errors.</summary>
+    private static List<string> TypeIds(IEnumerable<string>? names, string field, IReadOnlyList<PlayerType> types, List<string> errors)
+    {
+        var ids = new List<string>();
+        foreach (var name in names ?? [])
+        {
+            var type = types.FirstOrDefault(t => string.Equals(t.Id, name, StringComparison.OrdinalIgnoreCase));
+            if (type is null) errors.Add($"{field}: '{name}' is not one of: {string.Join(", ", types.Select(t => t.Id))}");
+            else if (!ids.Contains(type.Id)) ids.Add(type.Id);
+        }
+        return ids;
     }
 
     /// <summary>Enum names only (case-insensitive); numeric strings are rejected.</summary>
@@ -306,6 +328,7 @@ public static partial class ContentLoader
         public string? Draws { get; set; }
         public List<string>? BoardRequire { get; set; }
         public List<string>? BoardExclude { get; set; }
+        public BehindDto? Behind { get; set; }
         public string? Correct { get; set; }
         public string? Reason { get; set; }
     }
@@ -316,6 +339,12 @@ public static partial class ContentLoader
         public string? Description { get; set; }
         public Dictionary<string, string>? Open { get; set; }
         public Dictionary<string, string>? BigBlindCall { get; set; }
+    }
+
+    private sealed class BehindDto
+    {
+        public List<string>? Require { get; set; }
+        public List<string>? Exclude { get; set; }
     }
 
     private sealed class HeroDto
