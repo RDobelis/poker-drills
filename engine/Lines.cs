@@ -443,8 +443,9 @@ public sealed class FacingFlopCbetLine : LineTemplate
 public enum StreetPlay { CheckThrough, Bet33Call, Bet75Call }
 
 /// <summary>
-/// Hero opens, villain calls in the BB. On flop and turn villain checks and hero either checks back
-/// (50%) or bets 33%/75% (25% each) and gets called. Subclasses define the river action.
+/// Hero opens, villain calls in the BB. On flop and turn villain checks and hero either checks back or bets
+/// 33%/75% and gets called: the generator plays those streets by the rules (<see cref="FollowRules"/>);
+/// <see cref="Build(Rng, IReadOnlyList{Card})"/> samples them (50% check, 25% each bet). Subclasses define the river action.
 /// </summary>
 public abstract class SrpToRiverLine : LineTemplate
 {
@@ -457,11 +458,31 @@ public abstract class SrpToRiverLine : LineTemplate
     public override Spot Build(Rng rng, IReadOnlyList<Card> board) =>
         Build(new Params(rng.Pick(HeroSeats), SamplePlay(rng), SamplePlay(rng)), board);
 
+    /// <summary>
+    /// Picks the seat only; the flop and turn are checked through here and filled in by <see cref="FollowRules"/>,
+    /// which the generator calls once it knows villain's HUD.
+    /// </summary>
     public override Spot? TryBuild(Rng rng, IReadOnlyList<Card> hole, IReadOnlyList<Card> board, PreflopRanges ranges)
     {
         var seat = rng.Pick(HeroSeats);
         if (!ranges.CanOpen(seat, hole)) return null;
-        return Build(new Params(seat, SamplePlay(rng), SamplePlay(rng)), board);
+        return Build(new Params(seat, StreetPlay.CheckThrough, StreetPlay.CheckThrough), board);
+    }
+
+    /// <summary>
+    /// Plays the flop and turn the way the established rules say: <paramref name="heroPlay"/> decides hero's play on
+    /// each street from the cards seen so far, and when hero bets <paramref name="villainCalls"/> decides whether
+    /// villain calls. Null when villain would have folded before the river (this river spot isn't reached that way).
+    /// </summary>
+    public Spot? FollowRules(Position hero, IReadOnlyList<Card> board,
+        Func<Street, IReadOnlyList<Card>, StreetPlay> heroPlay, Func<bool> villainCalls)
+    {
+        RequireBoard(board);
+        var flop = heroPlay(Street.Flop, board.Take(3).ToList());
+        if (flop != StreetPlay.CheckThrough && !villainCalls()) return null;
+        var turn = heroPlay(Street.Turn, board.Take(4).ToList());
+        if (turn != StreetPlay.CheckThrough && !villainCalls()) return null;
+        return Build(new Params(hero, flop, turn), board);
     }
 
     public Spot Build(Params p, IReadOnlyList<Card> board)

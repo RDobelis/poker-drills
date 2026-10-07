@@ -13,7 +13,9 @@ Kept out of the prototype on purpose. Each one is a candidate for after the 20-s
 - Import the exported flags back into the generator to drop or exclude flagged drills automatically.
 - More rule conditions: require a specific draw (`"draws": ["FlushDraw"]`), high-card limits
   (`HighCard` is already computed but not used), hero/villain positions, bet size faced.
-- More lines: 3-bet pots, multiway pots, turn decisions, villain donk bets, overbet sizes.
+- More lines: turn decisions, villain donk bets, overbet sizes. A turn line would also let coach rules (not only
+  the default policy) decide hero's turn play on the way to river spots.
+- Multi-street drills: the student plays flop, turn and river of one hand, each step graded by its own rule.
 - Per-type default sizings (e.g. bigger iso sizes against stations) instead of fixed option sizes.
 - A rule linter that reports how much two rules overlap even when they agree.
 - Suit-isomorphic dedupe (AsKs ≈ AhKh) for more distinct drills per rule.

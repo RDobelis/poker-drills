@@ -71,23 +71,33 @@ hand from the repository's Actions tab ("Deploy to GitHub Pages" → Run workflo
 With the placeholder content and seed 42:
 
 ```
-Rule                      Kind      Drills  Attempts  Conflicts  Warnings
-maniac-flop-call-down     action       200      2415          0  -
-maniac-river-bluffcatch   action       200      2847          0  -
-nit-river-fold-one-pair   action       200      3681          0  -
-overfolder-flop-stab      action       200      5710          0  -
-station-flop-no-stab      action       200      1657          0  -
-station-iso-big           action       200     11811          0  -
-station-iso-trash         action       200       240          0  -
-station-river-no-bluff    action       200      1792          0  -
-station-river-value       action       200      2354          0  -
-identify-nit              identify     100       100          -  -
-identify-calling-station  identify     100       100          -  -
-identify-maniac           identify     100       100          -  -
-identify-overfolder       identify     100       100          -  -
-identify-reg              identify     100       100          -  -
-Wrote 2300 drills ... Conflicts: 0. Warnings: 0.
+Rule                                Kind      Drills  Attempts  Conflicts  Warnings
+maniac-3bet-4bet-premium            action       200     10666          0  -
+maniac-3bet-call-strong             action       200      9121          0  -
+maniac-flop-call-down               action       200      2415          0  -
+maniac-river-bluffcatch             action       200      4750          0  -
+nit-3bet-fold                       action       200      1633          0  -
+nit-river-fold-one-pair             action       200     11199          0  -
+overfolder-3way-dry-stab            action       200     11744          0  -
+overfolder-flop-stab                action       200      5710          0  -
+station-3way-no-stab                action       200      1058          0  -
+station-flop-no-stab                action       200      1657          0  -
+station-iso-big                     action       200      6589          0  -
+station-iso-playable                action       200      2696          0  -
+station-iso-playable-maniac-behind  action       200      9233          0  -
+station-iso-trash                   action       200       237          0  -
+station-river-no-bluff              action       200      1926          0  -
+station-river-value                 action       200      3878          0  -
+identify-nit                        identify     100       100          -  -
+identify-calling-station            identify     100       100          -  -
+identify-maniac                     identify     100       100          -  -
+identify-overfolder                 identify     100       100          -  -
+identify-reg                        identify     100       100          -  -
+Wrote 3700 drills ... Conflicts: 0. Warnings: 0.
 ```
+
+River rules need more attempts than before because a deal is dropped when villain would have folded to one of
+hero's earlier bets (see "River spots are reached by the rules" below).
 
 A rule that yields fewer than 50 drills gets a warning. The same seed always produces a byte-identical file.
 
@@ -98,8 +108,9 @@ conflict checker re-analyses every generated drill from its cards against every 
 line; a match with a different `correct` answer is a conflict: both rule ids and an example are printed,
 the process exits with code 1 and `drills.json` is not written.
 
-The 9 placeholder rules produce **0 conflicts**, so no exclusions were added beyond those in the brief
-(`station-river-value` already excludes `FourToFlush` and `FourToStraight`). Rules for different villain
+The 16 placeholder rules produce **0 conflicts**. Beyond the brief's exclusions (`station-river-value` already
+excludes `FourToFlush` and `FourToStraight`), `station-iso-playable` excludes a maniac behind so it doesn't clash
+with `station-iso-playable-maniac-behind`. Rules for different villain
 types (for example `overfolder-flop-stab` and `station-flop-no-stab`) never conflict because the villain
 type is part of the match.
 
@@ -156,7 +167,14 @@ Full definitions are in [PLAN.md](PLAN.md). The interpretation calls:
   all different = Rainbow (a river can never be Rainbow, so it is never Dry).
 - **Money**: blinds 0.5/1, 100bb stacks, opens to 2.5bb. Bets are pot × % rounded to 0.1bb. Iso3/Iso5 =
   raise to 3bb/5bb; "Raise" facing a bet = raise to 3× the bet (all-in if that exceeds the stack).
-  On river lines, flop and turn are each checked through (50%) or bet 33%/75% by hero and called (25% each).
+- **River spots are reached by the rules.** Villain checks flop and turn to hero; hero's play on each street
+  is what the trainer teaches there: on the flop the first `SRP_HeroIP_FlopVillainChecks` rule (by id) that
+  matches villain's type and the flop cards, otherwise a default (also used on the turn, which has no rules
+  yet): top pair good kicker or better bets 75%, second pair or better or a flush/open-ended draw bets 33%,
+  the rest checks. When hero bets, villain calls with probability 100% minus their FoldToCbet; if villain
+  would fold, the deal is dropped. So a station river drill never follows a flop stab that
+  `station-flop-no-stab` says not to make. The coach view shows the path under "Earlier", e.g.
+  "Flop: check (rule station-flop-no-stab) · Turn: bet 33%, called (default for Air + FlushDraw)".
 - **Preflop realism**: in the postflop lines hero's hand must fit the action. The generator draws the seat
   first and rejects the deal if hero wouldn't open that hand from that seat (or wouldn't flat it in the BB
   against that opener), per `content/ranges.json`. So 93o is never opened UTG, and weak hands mostly appear

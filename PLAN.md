@@ -89,13 +89,22 @@ Raises facing a bet = raise to 3 x bet (capped at stack = all-in). Stacks report
 | Pre_IsoVsLimper | V in {MP, CO}, H after V in {CO, BTN} | folds, V limps 1, folds | 2.5 | Fold, Limp, Iso3 (to 3bb), Iso5 (to 5bb) |
 | SRP_HeroIP_FlopVillainChecks | H in {UTG, MP, CO, BTN} opens, V=BB calls | V checks flop | 5.5 | Check, Bet33, Bet75 |
 | SRP_HeroOOP_FacingFlopCbet | V in {UTG, MP, CO, BTN} opens, H=BB calls | H checks, V bets 33% or 75% | 5.5 + bet | Fold, Call, Raise |
-| SRP_HeroIP_RiverVillainChecks | as line 2 | flop & turn each: V checks, then H checks back (50%) or bets 33%/75% (25% each) and V calls; V checks river | computed | Check, Bet33, Bet75, Bet150 |
+| SRP_HeroIP_RiverVillainChecks | as line 2 | flop & turn each: V checks, then H checks back or bets 33%/75% by rule/default and V calls (see below); V checks river | computed | Check, Bet33, Bet75, Bet150 |
 | SRP_HeroIP_FacingRiverBet | as line 4 | ... V bets 75% river | computed + bet | Fold, Call, Raise |
 | Pre_FacingThreeBet | H in {UTG, MP, CO, BTN} opens, V any seat after H | V 3-bets 3x IP / 4x from blinds, rest fold | open + 3-bet + dead blinds | Fold, Call, FourBet (2.5x) |
 | SRP_3Way_FlopCheckedToHero | H = BTN opens, SB cold-calls (by type), V = BB calls | SB and V check flop | 7.5 | Check, Bet33, Bet75 |
 
 Rule seating conditions: `behind` (players still to act after hero, iso only) and `others` (opponents in the hand
 besides villain: extra limpers, the 3-way SB). Drills carry `behind` and `others` seats (schemaVersion 5).
+
+### River spots follow the rules (`SrpToRiverLine.FollowRules`, `DrillGenerator.HeroPlay`)
+`TryBuild` only picks hero's seat. After villain's HUD is drawn, the generator plays flop and turn: hero's play is
+the first `SRP_HeroIP_FlopVillainChecks` rule (by id) matching villain type + flop cards with no seating
+(Check → check back, Bet33/Bet75 → bet and called), else `DefaultPlay` (TPGK+ → 75%, SecondPair+ or FD/OE → 33%,
+else check). The turn has no rules yet and always uses the default. When hero bets, villain calls with probability
+1 − FoldToCbet/100 from the `path:{rule}:{attempt}` stream; a fold drops the deal. `facts.path` records each street
+("Flop: check (rule station-flop-no-stab)"). The plays are part of the spot, so river drill ids changed with this
+(saved progress on the old river drills is simply no longer used, as for any removed drill).
 
 ### Preflop ranges (`content/ranges.json`)
 In the postflop lines hero's hand must fit the preflop action. `open[seat]` = hands hero opens from

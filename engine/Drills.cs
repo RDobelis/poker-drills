@@ -24,7 +24,8 @@ public sealed record DrillFacts(
     IReadOnlyList<string> BoardFlags,
     string? HighCard,
     string? HandGroup,
-    string? Hand);
+    string? Hand,
+    IReadOnlyList<string> Path);
 
 public sealed record Drill
 {

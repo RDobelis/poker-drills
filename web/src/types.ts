@@ -23,6 +23,8 @@ export interface DrillFacts {
   highCard: string | null;
   handGroup: string | null;
   hand: string | null;
+  /** How hero played the earlier streets of a river spot, e.g. "Flop: bet 33%, called (rule …)". */
+  path?: string[];
 }
 
 /** A player at the table: every seat except hero's, villain included. */

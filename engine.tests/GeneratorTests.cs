@@ -217,6 +217,53 @@ public class GeneratorTests
     }
 
     [Fact]
+    public void Earlier_streets_of_river_spots_follow_the_rules()
+    {
+        var content = TestHelpers.Content;
+        var rivers = FullRun.Value.File.Drills.Where(d => d.Kind == DrillKinds.Action && d.Board.Count == 5).ToList();
+        Assert.NotEmpty(rivers);
+        foreach (var d in rivers)
+        {
+            var hole = d.HeroCards.Select(Card.Parse).ToArray();
+            var board = d.Board.Select(Card.Parse).ToArray();
+            var pot = Stakes.SrpPot;
+            foreach (var street in new[] { Street.Flop, Street.Turn })
+            {
+                var seen = board.Take(street == Street.Flop ? 3 : 4).ToList();
+                var (expected, _) = DrillGenerator.HeroPlay(street, hole, seen, d.VillainType, content.Rules, ClassifierOptions.Default);
+                var heroAction = d.Actions.Single(a => a.Seat == d.HeroPosition && a.Street == street.ToString());
+                if (expected == StreetPlay.CheckThrough)
+                {
+                    Assert.Equal("Check", heroAction.Kind);
+                    continue;
+                }
+                var bet = Stakes.Bet(pot, expected == StreetPlay.Bet33Call ? 33 : 75);
+                Assert.Equal("Bet", heroAction.Kind);
+                Assert.Equal((double)bet, heroAction.To, 6);
+                Assert.Contains(d.Actions, a => a.Seat == d.VillainPosition && a.Street == street.ToString() && a.Kind == "Call");
+                pot += 2 * bet;
+            }
+            Assert.Equal(2, d.Facts!.Path.Count);
+        }
+    }
+
+    [Fact]
+    public void Hero_plays_earlier_streets_by_rule_or_default()
+    {
+        var rules = TestHelpers.Content.Rules;
+        var air = Card.ParseMany("9c4s");
+        var dryFlop = Card.ParseMany("Ks7d2h");
+        var options = ClassifierOptions.Default;
+        Assert.Equal((StreetPlay.Bet33Call, "rule overfolder-flop-stab"), DrillGenerator.HeroPlay(Street.Flop, air, dryFlop, "Overfolder", rules, options));
+        Assert.Equal((StreetPlay.CheckThrough, "rule station-flop-no-stab"), DrillGenerator.HeroPlay(Street.Flop, air, dryFlop, "CallingStation", rules, options));
+        Assert.Equal(StreetPlay.CheckThrough, DrillGenerator.HeroPlay(Street.Flop, air, dryFlop, "Nit", rules, options).Play); // default checks air
+        Assert.Equal(StreetPlay.Bet33Call, DrillGenerator.HeroPlay(Street.Flop, Card.ParseMany("Ah5h"), Card.ParseMany("Kh9h2c"), "Nit", rules, options).Play); // flush draw
+        Assert.Equal(StreetPlay.Bet75Call, DrillGenerator.HeroPlay(Street.Turn, Card.ParseMany("AsKd"), Card.ParseMany("Kc7h2s9d"), "Nit", rules, options).Play); // TPGK
+        // No rules cover the turn yet: even against an overfolder the default decides there.
+        Assert.StartsWith("default", DrillGenerator.HeroPlay(Street.Turn, air, Card.ParseMany("Ks7d2h3c"), "Overfolder", rules, options).Why);
+    }
+
+    [Fact]
     public void Rules_about_players_behind_get_exactly_that_seating()
     {
         var drills = FullRun.Value.File.Drills;

@@ -109,9 +109,30 @@ public static class DrillGenerator
             if (!seenSpots.Add(key)) continue;
 
             var stats = StatSampler.SampleUnambiguous(villain, types, rng);
+
+            // River spots: the flop and turn follow the established rules. Hero plays each street as the matching
+            // rule (or the default) says; villain calls a bet only as often as their fold-to-c-bet allows. Villain's
+            // calls come from their own stream, so the seating never changes which river spots are reached.
+            var path = new List<string>();
+            if (template is SrpToRiverLine river)
+            {
+                var pathRng = Rng.ForLabel(options.Seed, $"path:{rule.Id}:{attempts}");
+                var callChance = 1 - stats.FoldToCbet / 100.0;
+                var played = river.FollowRules(spot.HeroPosition, board,
+                    (street, seen) =>
+                    {
+                        var (play, why) = HeroPlay(street, hole, seen, villain.Id, content.Rules, options.Classifier);
+                        path.Add($"{street}: {Describe(play)} ({why})");
+                        return play;
+                    },
+                    () => pathRng.NextDouble() < callChance);
+                if (played is null) continue;
+                spot = played;
+            }
+
             var id = UniqueId($"{rule.Id}-{Rng.Fnv1a32(key):x8}", ids);
             var players = SeatPlayers(spot, seatTypes, seated.Stats, stats);
-            drills.Add(ActionDrill(id, rule, template, stats, spot, hole, board, facts, players, behind, others));
+            drills.Add(ActionDrill(id, rule, template, stats, spot, hole, board, facts, players, behind, others, path));
         }
 
         return (drills, attempts);
@@ -160,6 +181,52 @@ public static class DrillGenerator
             .Select(s => new SeatPlayer(s.Key.ToString(), s.Value.Id,
                 s.Key == spot.VillainPosition ? villainStats : otherStats[s.Key]))
             .ToList();
+
+    /// <summary>
+    /// Hero's play on an earlier street when villain checks: the answer of the rule that covers that street
+    /// (the flop: SRP_HeroIP_FlopVillainChecks rules for this villain type; first match by id), else the default.
+    /// </summary>
+    public static (StreetPlay Play, string Why) HeroPlay(Street street, IReadOnlyList<Card> hole, IReadOnlyList<Card> boardSoFar,
+        string villainType, IReadOnlyList<Rule> rules, ClassifierOptions classifier)
+    {
+        var facts = SpotFacts.Analyze(hole, boardSoFar, classifier);
+        if (street == Street.Flop)
+        {
+            var rule = rules
+                .Where(r => r.Line == LineId.SRP_HeroIP_FlopVillainChecks)
+                .OrderBy(r => r.Id, StringComparer.Ordinal)
+                .FirstOrDefault(r => RuleMatcher.Matches(r, villainType, r.Line, facts, Seating.Empty));
+            if (rule is not null) return (PlayFor(rule.Correct), $"rule {rule.Id}");
+        }
+        var draws = facts.Draws == DrawFlags.None ? "" : " + " + string.Join(", ", DrawNames(facts.Draws));
+        return (DefaultPlay(facts), $"default for {facts.HandClass}{draws}");
+    }
+
+    /// <summary>
+    /// Placeholder default for streets no rule covers: bet 75% with top pair good kicker or better, bet 33% with
+    /// weaker pairs, flush draws and open-enders, check everything else.
+    /// </summary>
+    public static StreetPlay DefaultPlay(SpotFacts facts)
+    {
+        if (facts.HandClass >= HandClass.TopPairGoodKicker) return StreetPlay.Bet75Call;
+        if (facts.HandClass >= HandClass.SecondPair || (facts.Draws & (DrawFlags.FlushDraw | DrawFlags.OpenEnded)) != 0)
+            return StreetPlay.Bet33Call;
+        return StreetPlay.CheckThrough;
+    }
+
+    private static StreetPlay PlayFor(string answer) => answer switch
+    {
+        "Bet33" => StreetPlay.Bet33Call,
+        "Bet75" => StreetPlay.Bet75Call,
+        _ => StreetPlay.CheckThrough,
+    };
+
+    private static string Describe(StreetPlay play) => play switch
+    {
+        StreetPlay.Bet33Call => "bet 33%, called",
+        StreetPlay.Bet75Call => "bet 75%, called",
+        _ => "check",
+    };
 
     /// <summary>A drill's seating (types behind hero, types of the other opponents), recomputed from its own actions.</summary>
     public static Seating SeatingOf(Drill drill)
@@ -269,7 +336,7 @@ public static class DrillGenerator
 
     private static Drill ActionDrill(string id, Rule rule, LineTemplate template, StatLine stats, Spot spot,
         IReadOnlyList<Card> hole, IReadOnlyList<Card> board, SpotFacts facts, IReadOnlyList<SeatPlayer> players,
-        IReadOnlyList<Position> behind, IReadOnlyList<Position> others) => new()
+        IReadOnlyList<Position> behind, IReadOnlyList<Position> others, IReadOnlyList<string> path) => new()
     {
         Players = players,
         Behind = behind.Select(p => p.ToString()).ToList(),
@@ -301,7 +368,8 @@ public static class DrillGenerator
             BoardAnalyzer.Names(facts.BoardFlags),
             facts.HighCard is { } high ? Ranks.ToChar(high).ToString(CultureInfo.InvariantCulture) : null,
             facts.HandGroup?.ToString(),
-            PreflopGroups.Notation(hole)),
+            PreflopGroups.Notation(hole),
+            path),
     };
 
     private static string UniqueId(string id, HashSet<string> used)

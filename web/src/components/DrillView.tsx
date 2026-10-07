@@ -165,6 +165,16 @@ function Facts({ drill }: { drill: Drill }) {
           </dd>
         </div>
       )}
+      {f?.path && f.path.length > 0 && (
+        <div>
+          <dt>Earlier</dt>
+          <dd>
+            {f.path.map((step) => (
+              <div key={step}>{step}</div>
+            ))}
+          </dd>
+        </div>
+      )}
       {drill.others.length > 0 && (
         <div>
           <dt>Also in</dt>

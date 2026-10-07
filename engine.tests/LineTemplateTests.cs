@@ -416,6 +416,28 @@ public class LineTemplateTests
     }
 
     [Fact]
+    public void FollowRules_plays_streets_by_policy_and_stops_when_villain_folds()
+    {
+        var line = new RiverVillainChecksLine();
+        var barrels = line.FollowRules(Position.CO, River, (_, _) => StreetPlay.Bet75Call, () => true)!;
+        Assert.Equal(34.3m, barrels.Pot); // 5.5 -> 13.7 -> 34.3
+        Assert.Equal(83.1m, barrels.HeroStack);
+
+        Assert.Null(line.FollowRules(Position.CO, River, (_, _) => StreetPlay.Bet33Call, () => false)); // villain folds the flop
+
+        var cardsSeen = new List<int>();
+        var checks = line.FollowRules(Position.CO, River,
+            (_, seen) =>
+            {
+                cardsSeen.Add(seen.Count);
+                return StreetPlay.CheckThrough;
+            },
+            () => throw new InvalidOperationException("villain is never asked to call when hero checks"))!;
+        Assert.Equal(5.5m, checks.Pot);
+        Assert.Equal([3, 4], cardsSeen); // the policy only sees the cards dealt so far
+    }
+
+    [Fact]
     public void Templates_reject_wrong_board_size()
     {
         Assert.Throws<ArgumentException>(() => LineTemplate.For(LineId.SRP_HeroIP_FlopVillainChecks).Build(new Rng(1), River));
