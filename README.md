@@ -158,6 +158,12 @@ Full definitions are in [PLAN.md](PLAN.md). The interpretation calls:
   first and rejects the deal if hero wouldn't open that hand from that seat (or wouldn't flat it in the BB
   against that opener), per `content/ranges.json`. So 93o is never opened UTG, and weak hands mostly appear
   as button opens. The iso-vs-limper line keeps any hand: deciding to fold trash is the lesson there.
+- **Other players act by type** (placeholder model in `engine/Behaviour.cs`, read from each player's own HUD
+  line): when nobody has raised they raise PFR%, limp 60% of (VPIP - PFR) and fold the rest; facing a raise
+  they 3-bet 3Bet%, cold-call 50% of (VPIP - PFR) and fold the rest. The seating is drawn until those actions
+  fit the spot, so the players who fold before hero are mostly tight types, and in "villain limps" spots
+  loose players often limp in as well (pot +1bb and iso sizes +1bb per extra limper). Raises and cold calls by
+  other players are filtered out for now: they would make 3-bet or multiway pots, which no spot covers yet.
 - **Duplicates** are skipped on hand + board. Preflop spots have no board, so the seating takes its
   place; otherwise `station-iso-big` (only 70 Premium/Strong combos) could never reach 150 drills.
 - **Stat lines** are sampled uniformly inside the type's ranges with PFR ≤ VPIP and 3Bet ≤ PFR, and
@@ -172,7 +178,8 @@ Full definitions are in [PLAN.md](PLAN.md). The interpretation calls:
   its own HUD line); villain's seat is marked "VS". Tapping a seat shows that player's HUD stats. Bets sit in
   front of the seats and the pot and board in the middle. Players still to act after hero get a dashed
   outline and are listed under the table ("Left to act behind you"); rules can react to them via `behind`.
-  The other players' actions don't depend on their type yet. The action before hero's decision replays step by step (Skip /
+  The other players act by type before hero decides (see "Other players" below), and every caption names
+  the player by type ("Station (UTG) limps 1bb", "Nit (CO) folds"). The action before hero's decision replays step by step (Skip /
   Replay buttons; no animation with reduced-motion settings). The text hand history is under the answers.
 - **Session**: due reviews first (most overdue, lowest box), then new drills taken round-robin over the
   rules, least-practised first (all identification drills share one slot). At most 3 drills per rule; the

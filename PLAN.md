@@ -99,6 +99,13 @@ UTG/MP/CO/BTN; `bigBlindCall[opener]` = hands hero flat-calls in the BB vs an op
 range. Pre_IsoVsLimper keeps any hand (the preflop decision is the drill). Notation: `22+`, `77-99`,
 `A2s+`, `KTo+`, `K9s-K6s`, `AK`.
 
+### Other players act by type (`engine/Behaviour.cs`, `LineTemplate.ApplySeating`)
+Each seated player's preflop action comes from their own HUD line: unopened → raise PFR%, limp 0.6 × (VPIP − PFR),
+else fold; facing a raise → 3-bet 3Bet%, cold-call 0.5 × (VPIP − PFR), else fold. Per attempt the seating (types +
+HUD lines) is drawn from its own stream and redrawn until every player the line shows folding would fold, or —
+in Pre_IsoVsLimper only — limps (extra limper: pot +1bb, iso sizes +1bb each, extra limpers join the duplicate
+key). Postflop drills therefore keep their cards; only the seating changes.
+
 ### Player types / stats
 Stats: VPIP, PFR, 3Bet, WTSD, AF, FoldToCbet. Integers except AF (0.1 steps). Sampling is uniform inside the
 type's ranges with sanity constraints PFR <= VPIP and 3Bet <= PFR. A stat line is accepted only if it lies

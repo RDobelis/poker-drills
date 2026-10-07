@@ -1,4 +1,4 @@
-import type { Drill, DrillAction } from '../types';
+import type { Drill, DrillAction, TypeNamer } from '../types';
 
 // Replays a drill's action steps into table states for the table view. Pure functions only.
 
@@ -124,23 +124,28 @@ const VERBS: Record<DrillAction['kind'], [you: string, they: string]> = {
   Bet: ['bet', 'bets'],
 };
 
-export function describeAction(drill: Drill, a: DrillAction, typeName: (typeId: string) => string): string {
-  const isHero = a.seat === drill.heroPosition;
-  const who = isHero ? 'You' : a.seat === drill.villainPosition ? `${typeName(drill.villainType)} (${a.seat})` : a.seat;
-  const verb = VERBS[a.kind][isHero ? 0 : 1];
+/** "Calling Station (BB)" for villain, "Nit (UTG)" for other players (short type names), "You" for hero. */
+function who(drill: Drill, seat: string, typeName: TypeNamer): string {
+  if (seat === drill.heroPosition) return 'You';
+  const type = seat === drill.villainPosition ? drill.villainType : drill.players.find((p) => p.seat === seat)?.type;
+  return type ? `${typeName(type, seat !== drill.villainPosition)} (${seat})` : seat;
+}
+
+export function describeAction(drill: Drill, a: DrillAction, typeName: TypeNamer): string {
+  const verb = VERBS[a.kind][a.seat === drill.heroPosition ? 0 : 1];
   const amount = a.kind === 'Fold' || a.kind === 'Check' ? '' : ` ${round(a.to)}bb`;
-  return `${who} ${verb}${amount}`;
+  return `${who(drill, a.seat, typeName)} ${verb}${amount}`;
 }
 
 /** Caption for frame i: what just happened. */
-export function describeFrame(drill: Drill, frames: Frame[], i: number, typeName: (typeId: string) => string): string {
+export function describeFrame(drill: Drill, frames: Frame[], i: number, typeName: TypeNamer): string {
   if (i === 0) return 'Blinds are in';
   const frame = frames[i];
   const steps = drill.actions.slice(frames[i - 1].applied, frame.applied);
   if (steps.length === 0) return frame.street; // a new street was dealt
   if (steps.every((s) => s.kind === 'Fold')) {
-    const seats = steps.map((s) => s.seat);
-    return seats.length === 1 ? `${seats[0]} folds` : `${seats.join(', ')} fold`;
+    const names = steps.map((s) => who(drill, s.seat, typeName));
+    return names.length === 1 ? `${names[0]} folds` : `${names.join(', ')} fold`;
   }
   return steps.map((s) => describeAction(drill, s, typeName)).join('. ');
 }

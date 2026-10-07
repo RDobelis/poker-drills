@@ -268,6 +268,94 @@ public class LineTemplateTests
     }
 
     [Fact]
+    public void Iso_spot_with_extra_limpers_grows_the_pot_and_the_iso_sizes()
+    {
+        var iso = new IsoVsLimperLine();
+        var spot = iso.Build(new IsoVsLimperLine.Params(Position.MP, Position.BTN), [], [Position.UTG, Position.CO]);
+        Assert.Equal(4.5m, spot.Pot); // blinds 1.5 + three limps
+        Assert.Equal(1m, spot.ToCall);
+        Assert.Equal(["Preflop: UTG limps 1bb. Villain (MP) limps 1bb. CO limps 1bb."], spot.ActionHistory);
+        Assert.Equal("Raise to 5bb", Label(spot, "Iso3")); // 3bb + 1bb per extra limper
+        Assert.Equal("Raise to 7bb", Label(spot, "Iso5"));
+        var r = Replay(spot);
+        Assert.Equal(spot.Pot, r.Pot);
+        Assert.Equal(spot.ToCall, r.ToCall);
+
+        Assert.Throws<ArgumentException>(() => iso.Build(new IsoVsLimperLine.Params(Position.MP, Position.CO), [], [Position.BTN]));
+    }
+
+    [Fact]
+    public void Behaviour_odds_come_from_the_hud()
+    {
+        var station = new StatLine(52, 6, 2, 40, 1.0, 28);
+        var nit = new StatLine(13, 11, 3, 22, 3.0, 58);
+
+        var (fold, limp, raise) = PreflopBehaviour.Odds(station, PreflopSituation.Unopened);
+        Assert.Equal(0.06, raise, 6); // PFR
+        Assert.Equal(0.6 * 0.46, limp, 6); // limp share of VPIP - PFR
+        Assert.Equal(1 - 0.06 - 0.276, fold, 6);
+        Assert.True(PreflopBehaviour.Odds(nit, PreflopSituation.Unopened).Fold > fold);
+
+        var (foldVsRaise, call, threeBet) = PreflopBehaviour.Odds(station, PreflopSituation.FacingRaise);
+        Assert.Equal(0.02, threeBet, 6); // 3Bet
+        Assert.Equal(0.5 * 0.46, call, 6); // cold-call share of VPIP - PFR
+        Assert.Equal(1 - 0.02 - 0.23, foldVsRaise, 6);
+    }
+
+    private static Card[] BoardFor(LineTemplate t) => t.BoardCardCount switch { 0 => [], 3 => Flop, _ => River };
+
+    private static Dictionary<Position, StatLine> Everyone(Spot spot, StatLine stats) =>
+        Enum.GetValues<Position>().Where(p => p != spot.HeroPosition && p != spot.VillainPosition).ToDictionary(p => p, _ => stats);
+
+    [Fact]
+    public void Players_who_never_play_a_hand_always_fold_through()
+    {
+        var never = new StatLine(0, 0, 0, 20, 1.0, 50);
+        var rng = new Rng(2);
+        foreach (var template in LineTemplate.All.Values)
+        {
+            for (var i = 0; i < 30; i++)
+            {
+                var spot = template.Build(rng, BoardFor(template));
+                Assert.Same(spot, template.ApplySeating(spot, Everyone(spot, never), rng));
+            }
+        }
+    }
+
+    [Fact]
+    public void Players_who_always_raise_cannot_sit_where_the_line_has_them_fold()
+    {
+        var raiser = new StatLine(100, 100, 100, 30, 8.0, 20);
+        var rng = new Rng(3);
+        var flop = new FlopVillainChecksLine().Build(new FlopVillainChecksLine.Params(Position.CO), Flop); // UTG, MP, BTN, SB fold
+        Assert.Null(new FlopVillainChecksLine().ApplySeating(flop, Everyone(flop, raiser), rng));
+        var iso = new IsoVsLimperLine().Build(new IsoVsLimperLine.Params(Position.MP, Position.BTN)); // UTG, CO fold
+        Assert.Null(new IsoVsLimperLine().ApplySeating(iso, Everyone(iso, raiser), rng));
+    }
+
+    [Fact]
+    public void Limp_happy_players_before_hero_become_extra_limpers()
+    {
+        var limper = new StatLine(100, 0, 0, 40, 0.5, 20); // limps 60%, folds 40%, never raises
+        var iso = new IsoVsLimperLine();
+        var spot = iso.Build(new IsoVsLimperLine.Params(Position.MP, Position.BTN)); // UTG and CO act before hero
+        var rng = new Rng(4);
+        var counts = new int[3];
+        for (var i = 0; i < 4000; i++)
+        {
+            var played = iso.ApplySeating(spot, Everyone(spot, limper), rng)!;
+            var extra = played.Actions.Count(a => a.Kind == ActionKind.Limp && a.Seat != Position.MP);
+            counts[extra]++;
+            Assert.Equal(2.5m + extra, played.Pot);
+            Assert.DoesNotContain(played.Actions, a => a.Seat is Position.SB or Position.BB && a.Kind != ActionKind.Post); // behind hero: not acted
+        }
+        // Two players limping 60% each: 0 / 1 / 2 extra limpers ~ 16% / 48% / 36%.
+        Assert.InRange(counts[0] / 4000.0, 0.13, 0.19);
+        Assert.InRange(counts[1] / 4000.0, 0.44, 0.52);
+        Assert.InRange(counts[2] / 4000.0, 0.32, 0.40);
+    }
+
+    [Fact]
     public void Templates_reject_wrong_board_size()
     {
         Assert.Throws<ArgumentException>(() => LineTemplate.For(LineId.SRP_HeroIP_FlopVillainChecks).Build(new Rng(1), River));

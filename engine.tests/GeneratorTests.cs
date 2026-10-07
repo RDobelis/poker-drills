@@ -70,8 +70,9 @@ public class GeneratorTests
 
             var villainTypes = StatSampler.TypesContaining(content.Types, d.VillainStats).Select(t => t.Id);
             Assert.Equal([d.VillainType], villainTypes);
-            // Chip conservation. Postflop: 100 + 100 + dead SB. Preflop: 100 + 100 + both live blinds.
-            var expectedChips = template.DecisionStreet == Street.Preflop ? 201.5 : 200.5;
+            // Chip conservation. Postflop: 100 + 100 + dead SB. Preflop: 100 + 100 + both live blinds + 1bb per extra limper.
+            var extraLimpers = d.Actions.Count(a => a.Kind == "Limp" && a.Seat != d.VillainPosition);
+            var expectedChips = template.DecisionStreet == Street.Preflop ? 201.5 + extraLimpers : 200.5;
             Assert.Equal(expectedChips, d.Stacks!.Hero + d.Stacks.Villain + d.Pot!.Value, 6);
         }
     }
@@ -141,29 +142,65 @@ public class GeneratorTests
     }
 
     [Fact]
-    public void Seat_types_follow_table_shares_and_never_change_the_drills()
+    public void Seating_never_changes_the_cards_of_postflop_drills()
     {
+        // Preflop spots can gain extra limpers from the seating, and "behind" rules choose their seating,
+        // so the check is about the postflop rules: who sits around the table never changes their cards or ids.
         var content = TestHelpers.Content;
-        // Rules about the players behind pick their seating on purpose, so only the others show the plain mix.
-        var plainRules = content.Rules.Where(r => !r.HasBehindConditions).Select(r => r.Id).ToHashSet();
-        var drills = FullRun.Value.File.Drills.Where(d => d.Kind == DrillKinds.Action && plainRules.Contains(d.RuleId)).ToList();
-        var others = drills.SelectMany(d => d.Players.Where(p => p.Seat != d.VillainPosition)).ToList();
-        var totalShare = (double)content.Types.Sum(t => t.TableShare);
-        foreach (var t in content.Types)
-        {
-            var observed = others.Count(p => p.Type == t.Id) / (double)others.Count;
-            Assert.InRange(observed, t.TableShare / totalShare - 0.03, t.TableShare / totalShare + 0.03);
-        }
-
-        // Who sits around the table must not change a single card, action or drill id.
+        var stableRules = content.Rules
+            .Where(r => !r.HasBehindConditions && LineTemplate.For(r.Line).DecisionStreet != Street.Preflop)
+            .Select(r => r.Id)
+            .ToHashSet();
         var maniacTable = content with { Types = content.Types.Select(t => t with { TableShare = t.Id == "Maniac" ? 100 : 1 }).ToList() };
-        var a = DrillGenerator.Generate(content, Small).File.Drills.Where(d => plainRules.Contains(d.RuleId)).ToList();
-        var b = DrillGenerator.Generate(maniacTable, Small).File.Drills.Where(d => plainRules.Contains(d.RuleId)).ToList();
+        var a = DrillGenerator.Generate(content, Small).File.Drills.Where(d => stableRules.Contains(d.RuleId)).ToList();
+        var b = DrillGenerator.Generate(maniacTable, Small).File.Drills.Where(d => stableRules.Contains(d.RuleId)).ToList();
+        Assert.NotEmpty(a);
         Assert.Equal(a.Select(d => d.Id), b.Select(d => d.Id));
         Assert.Equal(a.Select(Spot), b.Select(Spot));
         Assert.NotEqual(a.SelectMany(d => d.Players.Select(p => p.Type)), b.SelectMany(d => d.Players.Select(p => p.Type)));
 
         static string Spot(Drill d) => string.Join(",", d.HeroCards.Concat(d.Board).Concat(d.ActionHistory));
+    }
+
+    [Fact]
+    public void Other_players_act_by_type()
+    {
+        var content = TestHelpers.Content;
+        var drills = FullRun.Value.File.Drills.Where(d => d.Kind == DrillKinds.Action).ToList();
+        var totalShare = (double)content.Types.Sum(t => t.TableShare);
+        double Share(string type) => content.Types.Single(t => t.Id == type).TableShare / totalShare;
+        static double Rate(IReadOnlyCollection<string> types, string type) => types.Count(t => t == type) / (double)types.Count;
+        static string TypeAt(Drill d, string seat) => d.Players.Single(p => p.Seat == seat).Type;
+
+        // Nobody but hero and villain raises or calls before hero's decision: those would be different spots.
+        foreach (var d in drills)
+        {
+            Assert.DoesNotContain(d.Actions, a =>
+                a.Street == "Preflop" && a.Seat != d.HeroPosition && a.Seat != d.VillainPosition && a.Kind is "Raise" or "Call");
+        }
+
+        // Players folding before anyone raised are mostly tight: maniacs fold far less often than they sit down.
+        var firstInFolders = drills.SelectMany(d => FirstInFolds(d).Select(seat => TypeAt(d, seat))).ToList();
+        Assert.True(Rate(firstInFolders, "Maniac") < Share("Maniac") * 0.8, $"maniac share among folders {Rate(firstInFolders, "Maniac")}");
+        Assert.True(Rate(firstInFolders, "Nit") > Share("Nit") * 1.05, $"nit share among folders {Rate(firstInFolders, "Nit")}");
+
+        // Extra limpers in "villain limps" spots are mostly loose-passive.
+        var extraLimpers = drills
+            .SelectMany(d => d.Actions.Where(a => a.Kind == "Limp" && a.Seat != d.VillainPosition).Select(a => TypeAt(d, a.Seat)))
+            .ToList();
+        Assert.True(extraLimpers.Count > 20, $"only {extraLimpers.Count} extra limpers");
+        Assert.True(Rate(extraLimpers, "CallingStation") > Share("CallingStation") * 1.5);
+        Assert.True(Rate(extraLimpers, "Nit") < Share("Nit"));
+    }
+
+    private static IEnumerable<string> FirstInFolds(Drill d)
+    {
+        var raised = false;
+        foreach (var a in d.Actions.Where(a => a.Street == "Preflop"))
+        {
+            if (a.Kind == "Fold" && !raised) yield return a.Seat;
+            if (a.Kind == "Raise") raised = true;
+        }
     }
 
     [Fact]

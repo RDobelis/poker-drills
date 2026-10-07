@@ -733,8 +733,9 @@ button.seat-box:focus-visible {
   top: 31%;
 }
 .bet-slot-3 {
-  left: 50%;
-  top: 25%;
+  /* beside the top seat's action tag rather than on top of it */
+  left: 66%;
+  top: 23%;
 }
 .bet-slot-4 {
   left: 73%;

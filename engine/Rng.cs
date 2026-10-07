@@ -57,6 +57,9 @@ public sealed class Rng
 
     public T Pick<T>(IReadOnlyList<T> items) => items[NextInt(items.Count)];
 
+    /// <summary>Uniform in [0, 1) with 53 random bits.</summary>
+    public double NextDouble() => (NextUInt64() >> 11) * (1.0 / (1UL << 53));
+
     public static ulong Fnv1a64(string text)
     {
         var hash = 14695981039346656037UL;

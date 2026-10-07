@@ -104,6 +104,34 @@ public abstract class LineTemplate
     /// </summary>
     public abstract Spot? TryBuild(Rng rng, IReadOnlyList<Card> hole, IReadOnlyList<Card> board, PreflopRanges ranges);
 
+    /// <summary>
+    /// Lets the players this line shows folding act according to their own HUD line (<see cref="PreflopBehaviour"/>).
+    /// Returns the spot as they played it, or null when one of them would have done something the line can't show
+    /// (here: anything but fold). <paramref name="others"/> has a HUD line for every seat except hero's and villain's.
+    /// </summary>
+    public virtual Spot? ApplySeating(Spot spot, IReadOnlyDictionary<Position, StatLine> others, Rng rng)
+    {
+        foreach (var (seat, situation) in Folders(spot))
+        {
+            if (PreflopBehaviour.Draw(others[seat], situation, rng) != PreflopAction.Fold) return null;
+        }
+        return spot;
+    }
+
+    /// <summary>The other players the line has folding preflop, and whether somebody had raised when they acted.</summary>
+    protected static IEnumerable<(Position Seat, PreflopSituation Situation)> Folders(Spot spot)
+    {
+        var raised = false;
+        foreach (var a in spot.Actions.Where(a => a.Street == Street.Preflop))
+        {
+            if (a.Kind == ActionKind.Fold && a.Seat != spot.HeroPosition && a.Seat != spot.VillainPosition)
+            {
+                yield return (a.Seat, raised ? PreflopSituation.FacingRaise : PreflopSituation.Unopened);
+            }
+            if (a.Kind == ActionKind.Raise) raised = true;
+        }
+    }
+
     public static IReadOnlyDictionary<LineId, LineTemplate> All { get; } = new LineTemplate[]
     {
         new IsoVsLimperLine(),
@@ -221,33 +249,80 @@ public sealed class IsoVsLimperLine : LineTemplate
     public override Spot? TryBuild(Rng rng, IReadOnlyList<Card> hole, IReadOnlyList<Card> board, PreflopRanges ranges) =>
         Build(rng, board);
 
-    public Spot Build(Params p, IReadOnlyList<Card>? board = null)
+    /// <summary>
+    /// Players before hero act by type: a fold stays a fold, a limp makes an extra limper (iso sizes grow
+    /// 1bb per extra limper), a raise can't be shown in this spot.
+    /// </summary>
+    public override Spot? ApplySeating(Spot spot, IReadOnlyDictionary<Position, StatLine> others, Rng rng)
+    {
+        var limpers = new List<Position>();
+        foreach (var (seat, situation) in Folders(spot))
+        {
+            switch (PreflopBehaviour.Draw(others[seat], situation, rng))
+            {
+                case PreflopAction.Fold:
+                    break;
+                case PreflopAction.Limp:
+                    limpers.Add(seat);
+                    break;
+                default:
+                    return null;
+            }
+        }
+        return limpers.Count == 0 ? spot : Build(new Params(spot.VillainPosition, spot.HeroPosition), [], limpers);
+    }
+
+    /// <param name="extraLimpers">Other players before hero who limp too (villain is the limper the rule is about).</param>
+    public Spot Build(Params p, IReadOnlyList<Card>? board = null, IReadOnlyCollection<Position>? extraLimpers = null)
     {
         RequireBoard(board ?? []);
         if (!Seatings.Contains(p)) throw new ArgumentException($"Unsupported seating {p}", nameof(p));
-
-        var pot = Stakes.SmallBlind + Stakes.BigBlind + LimpSize;
-        var history = new[]
+        var limpers = extraLimpers ?? [];
+        if (limpers.Any(s => s >= p.Hero || s == p.Villain))
         {
-            "Preflop: " + Sentence(
-                Folds(Before(p.Villain)),
-                $"{Seat("Villain", p.Villain)} limps {Stakes.Bb(LimpSize)}.",
-                Folds(Between(p.Villain, p.Hero))),
-        };
-        var steps = PostBlinds();
-        steps.AddRange(FoldSteps(Before(p.Villain)));
-        steps.Add(new ActionStep(Street.Preflop, p.Villain, ActionKind.Limp, LimpSize));
-        steps.AddRange(FoldSteps(Between(p.Villain, p.Hero)));
+            throw new ArgumentException("Extra limpers must act before hero and must not be villain", nameof(extraLimpers));
+        }
 
+        var steps = PostBlinds();
+        foreach (var seat in Before(p.Hero))
+        {
+            var limps = seat == p.Villain || limpers.Contains(seat);
+            steps.Add(new ActionStep(Street.Preflop, seat, limps ? ActionKind.Limp : ActionKind.Fold, limps ? LimpSize : 0m));
+        }
+
+        var pot = Stakes.SmallBlind + Stakes.BigBlind + LimpSize * (1 + limpers.Count);
+        var history = new[] { "Preflop: " + PreflopText(steps, p.Villain) };
+        var extra = limpers.Count * LimpSize;
         IReadOnlyList<DrillOption> options =
         [
             new("Fold", "Fold"),
             new("Limp", $"Limp behind ({Stakes.Bb(LimpSize)})"),
-            new("Iso3", $"Raise to {Stakes.Bb(SmallIso)}"),
-            new("Iso5", $"Raise to {Stakes.Bb(BigIso)}"),
+            new("Iso3", $"Raise to {Stakes.Bb(SmallIso + extra)}"),
+            new("Iso5", $"Raise to {Stakes.Bb(BigIso + extra)}"),
         ];
         return new Spot(Id, p.Hero, p.Villain, pot, LimpSize, Stakes.StartingStack, Stakes.StartingStack - LimpSize,
             history, steps, options);
+    }
+
+    /// <summary>"UTG folds. Villain (MP) limps 1bb. CO limps 1bb." from the preflop steps (blinds left out).</summary>
+    private static string PreflopText(IEnumerable<ActionStep> steps, Position villain)
+    {
+        var parts = new List<string?>();
+        var folds = new List<Position>();
+        foreach (var s in steps.Where(s => s.Kind != ActionKind.Post))
+        {
+            if (s.Kind == ActionKind.Fold)
+            {
+                folds.Add(s.Seat);
+                continue;
+            }
+            parts.Add(Folds(folds));
+            folds.Clear();
+            var who = s.Seat == villain ? Seat("Villain", s.Seat) : s.Seat.ToString();
+            parts.Add($"{who} limps {Stakes.Bb(s.To)}.");
+        }
+        parts.Add(Folds(folds));
+        return Sentence([.. parts]);
     }
 }
 

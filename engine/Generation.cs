@@ -91,9 +91,12 @@ public static class DrillGenerator
             var spot = template.TryBuild(rng, hole, board, content.Ranges);
             if (spot is null) continue;
 
-            // Who sits where comes from its own stream (one per attempt), so it never changes the cards or action.
+            // Seat the other players and let them act by type. The seating has its own random stream (one per
+            // attempt), so it never changes the cards; seatings whose players would break the line are redrawn.
             var seatRng = Rng.ForLabel(options.Seed, $"seats:{rule.Id}:{attempts}");
-            var seatTypes = DrawSeatTypes(spot, villain, types, seatRng);
+            if (SeatTable(template, spot, villain, types, seatRng) is not { } seating) continue;
+            spot = seating.Spot;
+            var seatTypes = seating.Types;
             var behind = TableSeating.SeatsBehind(spot.HeroPosition, spot.Actions);
             if (!RuleMatcher.MatchesBehind(rule, behind.Select(p => seatTypes[p].Id).ToList())) continue;
 
@@ -104,7 +107,7 @@ public static class DrillGenerator
 
             var stats = StatSampler.SampleUnambiguous(villain, types, rng);
             var id = UniqueId($"{rule.Id}-{Rng.Fnv1a32(key):x8}", ids);
-            var players = SeatPlayers(spot, seatTypes, stats, types, seatRng);
+            var players = SeatPlayers(spot, seatTypes, seating.Stats, stats);
             drills.Add(ActionDrill(id, rule, template, stats, spot, hole, board, facts, players, behind));
         }
 
@@ -126,13 +129,33 @@ public static class DrillGenerator
         return seats;
     }
 
-    /// <summary>The seated players with HUD lines: villain keeps its own; the others get one that fits only their type.</summary>
+    private const int MaxSeatings = 200;
+
+    /// <summary>
+    /// Draws who sits where (types and HUD lines) and lets them act by type; redraws when somebody would break
+    /// the line (e.g. a maniac opening before hero). Null if no seating fits within <see cref="MaxSeatings"/> tries.
+    /// </summary>
+    public static (Spot Spot, Dictionary<Position, PlayerType> Types, Dictionary<Position, StatLine> Stats)? SeatTable(
+        LineTemplate template, Spot spot, PlayerType villain, IReadOnlyList<PlayerType> types, Rng rng)
+    {
+        for (var i = 0; i < MaxSeatings; i++)
+        {
+            var seatTypes = DrawSeatTypes(spot, villain, types, rng);
+            var stats = seatTypes
+                .Where(s => s.Key != spot.VillainPosition)
+                .ToDictionary(s => s.Key, s => StatSampler.SampleUnambiguous(s.Value, types, rng));
+            if (template.ApplySeating(spot, stats, rng) is { } played) return (played, seatTypes, stats);
+        }
+        return null;
+    }
+
+    /// <summary>The seated players with their HUD lines (villain's comes from the rule's own stream).</summary>
     public static IReadOnlyList<SeatPlayer> SeatPlayers(Spot spot, IReadOnlyDictionary<Position, PlayerType> seatTypes,
-        StatLine villainStats, IReadOnlyList<PlayerType> types, Rng rng) =>
+        IReadOnlyDictionary<Position, StatLine> otherStats, StatLine villainStats) =>
         seatTypes
             .OrderBy(s => s.Key)
             .Select(s => new SeatPlayer(s.Key.ToString(), s.Value.Id,
-                s.Key == spot.VillainPosition ? villainStats : StatSampler.SampleUnambiguous(s.Value, types, rng)))
+                s.Key == spot.VillainPosition ? villainStats : otherStats[s.Key]))
             .ToList();
 
     /// <summary>Player types of the seats left to act behind hero, recomputed from the drill's own actions.</summary>
@@ -146,11 +169,17 @@ public static class DrillGenerator
             .ToList();
     }
 
-    /// <summary>Duplicate key: hand + board. Preflop spots have no board, so the seating takes its place.</summary>
+    /// <summary>
+    /// Duplicate key: hand + board. Preflop spots have no board, so the seating and any extra limpers take its place.
+    /// </summary>
     public static string SpotKey(IReadOnlyList<Card> hole, IReadOnlyList<Card> board, Spot spot)
     {
         var hand = string.Concat(hole.OrderByDescending(c => c.Index));
-        if (board.Count == 0) return $"{hand}|{spot.HeroPosition}v{spot.VillainPosition}";
+        if (board.Count == 0)
+        {
+            var extraLimpers = spot.Actions.Where(a => a.Kind == ActionKind.Limp && a.Seat != spot.VillainPosition).Select(a => $"+{a.Seat}");
+            return $"{hand}|{spot.HeroPosition}v{spot.VillainPosition}{string.Concat(extraLimpers)}";
+        }
         return $"{hand}|{string.Concat(board.OrderByDescending(c => c.Index))}";
     }
 

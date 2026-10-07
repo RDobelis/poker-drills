@@ -36,9 +36,10 @@ describe('table replay of the generated drills', () => {
     expect(new Set(boards)).toEqual(new Set([0, 3, 4, 5]));
     for (let i = 1; i < frames.length; i++) expect(frames[i].applied).toBeGreaterThanOrEqual(frames[i - 1].applied);
 
-    // CO open: "UTG, MP fold" is one frame, and the caption says so.
+    // CO open: "UTG, MP fold" is one frame, and the caption names each folder by type.
     const foldFrame = frames.findIndex((f, i) => i > 0 && f.applied - frames[i - 1].applied === 2);
-    expect(describeFrame(river, frames, foldFrame, typeName)).toBe('UTG, MP fold');
+    const typeAt = (seat: string) => typeName(river.players.find((p) => p.seat === seat)!.type);
+    expect(describeFrame(river, frames, foldFrame, typeName)).toBe(`${typeAt('UTG')} (UTG), ${typeAt('MP')} (MP) fold`);
     expect(describeFrame(river, frames, foldFrame + 1, typeName)).toBe('You raise to 2.5bb');
   });
 
@@ -78,6 +79,24 @@ describe('table replay of the generated drills', () => {
     expect(maniacBehind.length).toBeGreaterThan(0);
     for (const d of maniacBehind) {
       expect(d.behind.some((s) => d.players.find((p) => p.seat === s)?.type === 'Maniac'), d.id).toBe(true);
+    }
+  });
+
+  it('shows extra limpers acting by type in "villain limps" spots', () => {
+    const iso = actionDrills.filter((d) => d.line === 'Pre_IsoVsLimper');
+    const withExtra = iso.filter((d) => d.actions.some((a) => a.kind === 'Limp' && a.seat !== d.villainPosition));
+    expect(withExtra.length).toBeGreaterThan(0);
+    for (const d of withExtra) {
+      const frames = buildFrames(d);
+      const captions = frames.map((_, i) => describeFrame(d, frames, i, typeName));
+      const limper = d.actions.find((a) => a.kind === 'Limp' && a.seat !== d.villainPosition)!;
+      const type = typeName(d.players.find((p) => p.seat === limper.seat)!.type);
+      expect(captions, d.id).toContain(`${type} (${limper.seat}) limps 1bb`);
+    }
+    // Nobody but hero and villain raises or calls before hero's decision.
+    for (const d of actionDrills) {
+      const others = d.actions.filter((a) => a.street === 'Preflop' && a.seat !== d.heroPosition && a.seat !== d.villainPosition);
+      expect(others.every((a) => a.kind === 'Post' || a.kind === 'Fold' || a.kind === 'Limp'), d.id).toBe(true);
     }
   });
 
