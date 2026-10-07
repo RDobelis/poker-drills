@@ -78,7 +78,7 @@ maniac-flop-call-down               action       200      2415          0  -
 maniac-river-bluffcatch             action       200      4750          0  -
 nit-3bet-fold                       action       200      1633          0  -
 nit-river-fold-one-pair             action       200     11199          0  -
-overfolder-3way-dry-stab            action       200     11744          0  -
+overfolder-3way-dry-stab            action       200     17100          0  -
 overfolder-flop-stab                action       200      5710          0  -
 overfolder-turn-barrel              action       200     14595          0  -
 overfolder-turn-stab                action       200      2201          0  -
@@ -141,7 +141,7 @@ type is part of the match.
     `station-iso-playable` does.
   - Multiway spots, optional: `"others": { "require": [...], "exclude": [...] }` works the same way for the
     other opponents still in the hand besides villain (extra limpers, the 3-way small blind), e.g.
-    `overfolder-3way-dry-stab` excludes a station in the small blind.
+    `overfolder-3way-dry-stab` excludes a station or a maniac in the small blind.
   - Turn and river rules, optional: `"earlier": { "flop": "bet", "turn": "check" }` requires what hero did on
     the streets before ("bet" = hero bet and villain called, "check" = it checked through). Use it when the answer
     or the reason depends on the line: `overfolder-turn-barrel` ("fire again") needs a flop bet,

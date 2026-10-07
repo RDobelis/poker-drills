@@ -7,7 +7,7 @@
   "draws": "none",
   "boardRequire": ["Dry"],
   "boardExclude": [],
-  "others": { "exclude": ["CallingStation"] },
+  "others": { "exclude": ["CallingStation", "Maniac"] },
   "correct": "Bet33",
-  "reason": "An overfolder and no station in a dry 3-way pot: a small stab takes it down often enough."
+  "reason": "An overfolder, and no station or maniac in the small blind, in a dry 3-way pot: a small stab takes it down often enough."
 }

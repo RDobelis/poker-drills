@@ -16,7 +16,7 @@ public class PlayerTypeAndContentTests
         Assert.Equal(LineId.SRP_HeroIP_TurnVillainChecks, barrel.Line);
         Assert.Equal(new Dictionary<Street, EarlierAction> { [Street.Flop] = EarlierAction.Bet }, barrel.Earlier);
         Assert.Equal(EarlierAction.Check, content.Rules.Single(r => r.Id == "overfolder-turn-stab").Earlier[Street.Flop]);
-        Assert.Equal(["CallingStation"], content.Rules.Single(r => r.Id == "overfolder-3way-dry-stab").OthersExclude);
+        Assert.Equal(["CallingStation", "Maniac"], content.Rules.Single(r => r.Id == "overfolder-3way-dry-stab").OthersExclude);
         var maniacBehind = content.Rules.Single(r => r.Id == "station-iso-playable-maniac-behind");
         Assert.Equal(["Maniac"], maniacBehind.BehindRequire);
         Assert.Empty(maniacBehind.BehindExclude);

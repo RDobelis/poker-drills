@@ -396,7 +396,7 @@ public class GeneratorTests
         Assert.All(withManiac, d => Assert.Contains("Maniac", DrillGenerator.SeatingOf(d).Behind));
         Assert.All(withoutManiac, d => Assert.DoesNotContain("Maniac", DrillGenerator.SeatingOf(d).Behind));
         Assert.All(drills.Where(d => d.RuleId == "overfolder-3way-dry-stab"),
-            d => Assert.DoesNotContain("CallingStation", DrillGenerator.SeatingOf(d).Others));
+            d => Assert.DoesNotContain(DrillGenerator.SeatingOf(d).Others, t => t is "CallingStation" or "Maniac"));
         Assert.Contains("left to act behind you: Maniac",
             FullRun.Value.File.Rules.Single(r => r.Id == "station-iso-playable-maniac-behind").Conditions);
     }
