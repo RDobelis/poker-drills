@@ -4,6 +4,7 @@ import { DrillView } from '../components/DrillView';
 import { lineLabel } from '../components/labels';
 import { todayKey } from '../logic/dates';
 import { buildFlagExport, loadFlags, saveFlags, type Flags } from '../logic/flags';
+import { decisionsOf } from '../logic/hand';
 import { shuffle } from '../logic/session';
 
 const SAMPLE_SIZE = 10;
@@ -149,8 +150,22 @@ export function Review({ data }: { data: DrillFile }) {
                 {flag ? '⚑ Flagged' : '⚐ Flag'}
               </button>
             </div>
-            <DrillView drill={d} typeName={typeName} review />
-            <p className="reason">{d.reason}</p>
+            {d.kind === 'hand' ? (
+              decisionsOf(d).map((step, n, all) => (
+                <div key={step.id} className="review-step">
+                  <p className="small muted">
+                    Decision {n + 1} of {all.length} · rule <code>{step.ruleId}</code>
+                  </p>
+                  <DrillView drill={step} typeName={typeName} review />
+                  <p className="reason">{step.reason}</p>
+                </div>
+              ))
+            ) : (
+              <>
+                <DrillView drill={d} typeName={typeName} review />
+                <p className="reason">{d.reason}</p>
+              </>
+            )}
             {flag && (
               <label className="field">
                 <span>Note</span>

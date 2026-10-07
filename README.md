@@ -80,6 +80,7 @@ nit-3bet-fold                       action       200      1633          0  -
 nit-river-fold-one-pair             action       200     11199          0  -
 overfolder-3way-dry-stab            action       200     11744          0  -
 overfolder-flop-stab                action       200      5710          0  -
+overfolder-turn-barrel              action       200      1851          0  -
 station-3way-no-stab                action       200      1058          0  -
 station-flop-no-stab                action       200      1657          0  -
 station-iso-big                     action       200      6589          0  -
@@ -88,16 +89,21 @@ station-iso-playable-maniac-behind  action       200      9233          0  -
 station-iso-trash                   action       200       237          0  -
 station-river-no-bluff              action       200      1926          0  -
 station-river-value                 action       200      3878          0  -
+station-turn-no-bluff               action       200      2794          0  -
+station-turn-value                  action       200      4240          0  -
 identify-nit                        identify     100       100          -  -
 identify-calling-station            identify     100       100          -  -
 identify-maniac                     identify     100       100          -  -
 identify-overfolder                 identify     100       100          -  -
 identify-reg                        identify     100       100          -  -
-Wrote 3700 drills ... Conflicts: 0. Warnings: 0.
+hands-calling-station               hand         200     11158          -  -
+hands-overfolder                    hand          50      6237          -  -
+Wrote 4550 drills ... Conflicts: 0. Warnings: 0.
 ```
 
-River rules need more attempts than before because a deal is dropped when villain would have folded to one of
-hero's earlier bets (see "River spots are reached by the rules" below).
+Turn and river rules need more attempts than flop rules because a deal is dropped when villain would have folded
+to one of hero's earlier bets (see "Turn and river spots are reached by the rules" below). `hands-*` rows are the
+multi-street hand drills (see "Hand drills" below): 50 per rule a hand can end at.
 
 A rule that yields fewer than 50 drills gets a warning. The same seed always produces a byte-identical file.
 
@@ -108,9 +114,9 @@ conflict checker re-analyses every generated drill from its cards against every 
 line; a match with a different `correct` answer is a conflict: both rule ids and an example are printed,
 the process exits with code 1 and `drills.json` is not written.
 
-The 16 placeholder rules produce **0 conflicts**. Beyond the brief's exclusions (`station-river-value` already
+The 19 placeholder rules produce **0 conflicts**. Beyond the brief's exclusions (`station-river-value` already
 excludes `FourToFlush` and `FourToStraight`), `station-iso-playable` excludes a maniac behind so it doesn't clash
-with `station-iso-playable-maniac-behind`. Rules for different villain
+with `station-iso-playable-maniac-behind`. Every decision of every hand drill is checked the same way. Rules for different villain
 types (for example `overfolder-flop-stab` and `station-flop-no-stab`) never conflict because the villain
 type is part of the match.
 
@@ -122,7 +128,8 @@ type is part of the match.
 - `content/ranges.json`: which hands hero can hold in the postflop lines. `open` = hands hero opens from
   UTG/MP/CO/BTN; `bigBlindCall` = hands hero flat-calls in the BB against an open from each seat. Standard
   notation: `22+`, `77-99`, `A2s+`, `KTo+`, `K9s-K6s`, `AK`.
-- `content/rules/<id>.json`: one rule per file; the file name must equal the rule `id`.
+- `content/rules/<id>.json`: one rule per file; the file name must equal the rule `id` (ids starting with
+  `identify-` or `hands-` are reserved for the generated identification and hand drills).
   - Postflop: `"hero": { "minStrength": ..., "maxStrength": ... }`, `"draws": null | "none"`,
     `"boardRequire"` / `"boardExclude"` (board flag names).
   - Preflop: `"heroGroup": ["Premium", "Strong", "Playable", "Trash"]` instead of `hero`.
@@ -145,7 +152,7 @@ Names you can use:
 |---|---|
 | strengths | `Air WeakPair SecondPair TopPairWeakKicker TopPairGoodKicker Overpair TwoPair Set Trips Straight Flush FullHousePlus` |
 | board flags | `Paired Monotone TwoTone Rainbow FourToFlush FourToStraight Dry` |
-| lines (options) | `Pre_IsoVsLimper` (Fold, Limp, Iso3, Iso5) · `SRP_HeroIP_FlopVillainChecks` (Check, Bet33, Bet75) · `SRP_HeroOOP_FacingFlopCbet` (Fold, Call, Raise) · `SRP_HeroIP_RiverVillainChecks` (Check, Bet33, Bet75, Bet150) · `SRP_HeroIP_FacingRiverBet` (Fold, Call, Raise) · `Pre_FacingThreeBet` (Fold, Call, FourBet): hero opens, villain 3-bets (3x in position, 4x from the blinds) · `SRP_3Way_FlopCheckedToHero` (Check, Bet33, Bet75): hero opens the button, the small blind (a player who cold-calls by type) and villain in the big blind call, both check the flop |
+| lines (options) | `Pre_IsoVsLimper` (Fold, Limp, Iso3, Iso5) · `SRP_HeroIP_FlopVillainChecks` (Check, Bet33, Bet75) · `SRP_HeroOOP_FacingFlopCbet` (Fold, Call, Raise) · `SRP_HeroIP_TurnVillainChecks` (Check, Bet33, Bet75): villain checks the flop, hero plays it by the rules, villain checks the turn · `SRP_HeroIP_RiverVillainChecks` (Check, Bet33, Bet75, Bet150) · `SRP_HeroIP_FacingRiverBet` (Fold, Call, Raise) · `Pre_FacingThreeBet` (Fold, Call, FourBet): hero opens, villain 3-bets (3x in position, 4x from the blinds) · `SRP_3Way_FlopCheckedToHero` (Check, Bet33, Bet75): hero opens the button, the small blind (a player who cold-calls by type) and villain in the big blind call, both check the flop |
 
 After editing, run the generator again and reload the app.
 
@@ -167,14 +174,21 @@ Full definitions are in [PLAN.md](PLAN.md). The interpretation calls:
   all different = Rainbow (a river can never be Rainbow, so it is never Dry).
 - **Money**: blinds 0.5/1, 100bb stacks, opens to 2.5bb. Bets are pot × % rounded to 0.1bb. Iso3/Iso5 =
   raise to 3bb/5bb; "Raise" facing a bet = raise to 3× the bet (all-in if that exceeds the stack).
-- **River spots are reached by the rules.** Villain checks flop and turn to hero; hero's play on each street
-  is what the trainer teaches there: on the flop the first `SRP_HeroIP_FlopVillainChecks` rule (by id) that
-  matches villain's type and the flop cards, otherwise a default (also used on the turn, which has no rules
-  yet): top pair good kicker or better bets 75%, second pair or better or a flush/open-ended draw bets 33%,
-  the rest checks. When hero bets, villain calls with probability 100% minus their FoldToCbet; if villain
-  would fold, the deal is dropped. So a station river drill never follows a flop stab that
-  `station-flop-no-stab` says not to make. The coach view shows the path under "Earlier", e.g.
+- **Turn and river spots are reached by the rules.** Villain checks the earlier streets to hero; hero's play
+  on each is what the trainer teaches there: the first rule (by id) on that street's "villain checks" line
+  (`SRP_HeroIP_FlopVillainChecks`, `SRP_HeroIP_TurnVillainChecks`) that matches villain's type and the cards
+  seen so far, otherwise a default: top pair good kicker or better bets 75%, second pair or better or a
+  flush/open-ended draw bets 33%, the rest checks. When hero bets, villain calls with probability 100% minus
+  their FoldToCbet; if villain would fold, the deal is dropped. So a station river drill never follows a flop
+  stab that `station-flop-no-stab` says not to make. The coach view shows the path under "Earlier", e.g.
   "Flop: check (rule station-flop-no-stab) · Turn: bet 33%, called (default for Air + FlushDraw)".
+- **Hand drills** (multi-street): the student plays several streets of one hand. A hand ends at a turn or river
+  rule (the "anchor") whose villain type also has a rule for an earlier street, and is dealt like that rule's
+  drills; it is kept only if a rule decided at least one earlier street. Each street a rule decided becomes a
+  decision, graded by that rule; streets no rule covers are played by the default and are just part of the
+  story. With the placeholder rules that gives station hands (flop no-stab → turn value/no-bluff → river
+  value/no-bluff) and overfolder hands (flop stab → turn barrel); nit and maniac have no rules for earlier
+  streets yet, so they get none. Hands are listed per villain type as `hands-<type>`.
 - **Preflop realism**: in the postflop lines hero's hand must fit the action. The generator draws the seat
   first and rejects the deal if hero wouldn't open that hand from that seat (or wouldn't flat it in the BB
   against that opener), per `content/ranges.json`. So 93o is never opened UTG, and weak hands mostly appear
@@ -203,9 +217,15 @@ Full definitions are in [PLAN.md](PLAN.md). The interpretation calls:
   the player by type ("Station (UTG) limps 1bb", "Nit (CO) folds"). The action before hero's decision replays step by step (Skip /
   Replay buttons; no animation with reduced-motion settings). The text hand history is under the answers.
 - **Session**: due reviews first (most overdue, lowest box), then new drills taken round-robin over the
-  rules, least-practised first (all identification drills share one slot). At most 3 drills per rule; the
-  order never puts two drills from the same rule next to each other and prefers alternating villain types
-  and lines.
+  rules, least-practised first (all identification drills share one slot; each villain type's hands are one
+  slot). At most 3 drills per rule; the order never puts two drills from the same rule next to each other and
+  prefers alternating villain types and lines.
+- **Hands**: a hand drill shows "Whole hand: Flop · Turn · River" above the table. The student answers each
+  decision and gets feedback with that rule's reason, then "Continue to the turn": the table replays from where
+  the last decision was (hero's play, villain's call, the next card, villain's check). After a wrong answer the
+  hand goes on with the correct play, so later decisions are always the spots the rules teach. A hand counts
+  as one drill in the session and the Leitner boxes (up a box only if every decision was right); accuracy by
+  villain type and the summary count each decision, and mistakes are listed under each decision's own rule.
 - **Leitner**: boxes 1-5 with intervals 1/2/4/8/16 days. Wrong → box 1. Right → one box up. A drill seen for
   the first time counts as box 1 (right → box 2, due in 2 days).
 - **More sessions**: after a session, "Another 10 drills" (summary) or "Start another session" (home) starts a
@@ -215,7 +235,7 @@ Full definitions are in [PLAN.md](PLAN.md). The interpretation calls:
 - Answers are saved immediately; reloading mid-session offers "Resume".
 - **Coach review** (`#review`; "Coach review" link at the bottom of the home screen): choose a rule, see 10 random drills in full (with the classifier's
   facts), flag drills with a note (saved in the browser), and export all flags as JSON (download plus a
-  copyable text box).
+  copyable text box). For `hands-<type>`, each hand shows all its decisions with the rule behind each.
 
 Browser storage keys: `pokerDrills.v1` (progress) and `pokerDrills.flags.v1` (coach flags). Clear
 them in the browser's dev tools to start fresh.

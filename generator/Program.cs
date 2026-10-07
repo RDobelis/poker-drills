@@ -115,7 +115,8 @@ internal static class Report
         foreach (var r in reports)
         {
             var warnings = r.Warnings.Count == 0 ? "-" : "WARNING: " + string.Join("; ", r.Warnings);
-            var conflicts = r.Kind == DrillKinds.Identify ? "-" : r.Conflicts.ToString(CultureInfo.InvariantCulture);
+            // Hand decisions are checked too; their conflicts count on the rows of the rules involved.
+            var conflicts = r.Kind == DrillKinds.Action ? r.Conflicts.ToString(CultureInfo.InvariantCulture) : "-";
             Console.WriteLine($"{r.RuleId.PadRight(width)}  {r.Kind,-8}  {r.Produced,6}  {r.Attempts,8}  {conflicts,9}  {warnings}");
         }
     }

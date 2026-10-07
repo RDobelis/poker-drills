@@ -11,7 +11,8 @@ public class PlayerTypeAndContentTests
     {
         var content = TestHelpers.Content;
         Assert.Equal(["Nit", "CallingStation", "Maniac", "Overfolder", "Reg"], content.Types.Select(t => t.Id));
-        Assert.Equal(16, content.Rules.Count);
+        Assert.Equal(19, content.Rules.Count);
+        Assert.Equal(LineId.SRP_HeroIP_TurnVillainChecks, content.Rules.Single(r => r.Id == "overfolder-turn-barrel").Line);
         Assert.Equal(["CallingStation"], content.Rules.Single(r => r.Id == "overfolder-3way-dry-stab").OthersExclude);
         var maniacBehind = content.Rules.Single(r => r.Id == "station-iso-playable-maniac-behind");
         Assert.Equal(["Maniac"], maniacBehind.BehindRequire);
@@ -80,6 +81,8 @@ public class PlayerTypeAndContentTests
     [InlineData("\"draws\": null", "\"draws\": \"some\"", "draws")]
     [InlineData("\"reason\": \"r\"", "\"reason\": \"r\", \"boardExlude\": []", "boardExlude")] // typo'd property
     [InlineData("\"id\": \"x\"", "\"id\": \"Bad Id\"", "kebab-case")]
+    [InlineData("\"id\": \"x\"", "\"id\": \"identify-x\"", "reserved")]
+    [InlineData("\"id\": \"x\"", "\"id\": \"hands-x\"", "reserved for hand drills")]
     public void Invalid_rule_reports_the_problem(string find, string replace, string expectedInMessage)
     {
         var json = ValidRule.Replace(find, replace);

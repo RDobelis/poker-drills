@@ -1,6 +1,6 @@
 // Shape of web/public/drills.json, written by the C# generator (engine/Drills.cs).
 
-export type DrillKind = 'action' | 'identify';
+export type DrillKind = 'action' | 'identify' | 'hand';
 
 export interface DrillOption {
   id: string;
@@ -23,8 +23,26 @@ export interface DrillFacts {
   highCard: string | null;
   handGroup: string | null;
   hand: string | null;
-  /** How hero played the earlier streets of a river spot, e.g. "Flop: bet 33%, called (rule …)". */
+  /** How hero played the streets before a turn or river decision, e.g. "Flop: bet 33%, called (rule …)". */
   path?: string[];
+}
+
+/** One decision of a hand drill: the spot as hero sees it on that street and the rule that grades it. */
+export interface HandStep {
+  ruleId: string;
+  line: string;
+  pot: number;
+  toCall: number;
+  stacks: { hero: number; villain: number };
+  actionHistory: string[];
+  actions: DrillAction[];
+  /** The board cards visible at this decision. */
+  board: string[];
+  question: string;
+  options: DrillOption[];
+  correct: string;
+  reason: string;
+  facts: DrillFacts;
 }
 
 /** A player at the table: every seat except hero's, villain included. */
@@ -68,6 +86,11 @@ export interface Drill {
   correct: string;
   reason: string;
   facts: DrillFacts | null;
+  /**
+   * Hand drills (kind "hand") only: the decisions in order. The drill itself holds what they share (players,
+   * villain, hero's cards, the full board); its question, options and pot are empty. See logic/hand.ts.
+   */
+  steps?: HandStep[];
 }
 
 export interface RuleSummary {

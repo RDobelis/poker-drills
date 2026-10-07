@@ -1,5 +1,6 @@
 import type { Drill } from '../types';
 import type { Answer } from '../logic/state';
+import { decisionsOf } from '../logic/hand';
 import { CardRow } from '../components/Cards';
 import { ruleTitle } from '../components/labels';
 
@@ -24,10 +25,11 @@ export function Summary({ drills, answers, typeName, onAnother, onDone }: Props)
   const byId = new Map(drills.map((d) => [d.id, d]));
   const score = answers.filter((a) => a.correct).length;
 
-  // Mistakes grouped by rule, in the order they were made.
+  // Mistakes grouped by rule, in the order they were made. A hand's decisions each count under their own rule.
   const groups: Group[] = [];
   for (const answer of answers) {
-    const drill = byId.get(answer.drillId);
+    const hand = byId.get(answer.drillId);
+    const drill = hand && decisionsOf(hand)[answer.step ?? 0];
     if (!drill || answer.correct) continue;
     let g = groups.find((x) => x.ruleId === drill.ruleId);
     if (!g) {
@@ -45,6 +47,11 @@ export function Summary({ drills, answers, typeName, onAnother, onDone }: Props)
           {score}
           <span>/{answers.length}</span>
         </div>
+        {answers.length !== drills.length && (
+          <p className="small muted">
+            {answers.length} decisions in {drills.length} drills
+          </p>
+        )}
         <p className="muted">{groups.length === 0 ? 'Perfect session.' : 'Review the mistakes below.'}</p>
       </section>
 

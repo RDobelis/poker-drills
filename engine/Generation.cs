@@ -10,6 +10,9 @@ public sealed record GeneratorOptions
     public int MaxAttempts { get; init; } = 200_000;
     public int WarnBelow { get; init; } = 50;
     public int IdentifySamplesPerType { get; init; } = 100;
+
+    /// <summary>Hand drills ending at each anchor rule (see <see cref="DrillGenerator.HandAnchors"/>).</summary>
+    public int HandsPerRule { get; init; } = 50;
     public ClassifierOptions Classifier { get; init; } = ClassifierOptions.Default;
 }
 
@@ -20,13 +23,19 @@ public sealed record Conflict(string RuleId, string OtherRuleId, string Correct,
 
 public sealed record GenerationResult(DrillFile File, IReadOnlyList<RuleReport> Reports, IReadOnlyList<Conflict> Conflicts);
 
+/// <summary>Hero's play on a street villain checks to hero before the decision, and the rule that chose it (null: the default).</summary>
+public sealed record StreetDecision(Street Street, StreetPlay Play, Rule? Rule, string Why);
+
 public static class DrillGenerator
 {
     // 2: drills carry step-by-step `actions` for the table view. 3: `players` = a type and HUD for every seat.
     // 4: `behind` = seats left to act after hero; rules can react to them. 5: `others` = other opponents in the hand.
-    public const int SchemaVersion = 5;
+    // 6: `hand` drills with `steps` (several decisions in one hand).
+    public const int SchemaVersion = 6;
     public const string IdentifyLine = "Identify";
     public const string IdentifyQuestion = "Which player type is this?";
+    public const string HandLine = "Hand";
+    public const string HandQuestion = "Play the hand street by street.";
 
     public static GenerationResult Generate(ContentSet content, GeneratorOptions options)
     {
@@ -45,6 +54,13 @@ public static class DrillGenerator
             var (typeDrills, samples) = GenerateIdentify(type, content.Types, options);
             drills.AddRange(typeDrills);
             produced.Add((IdentifyRuleId(type), DrillKinds.Identify, typeDrills.Count, samples));
+        }
+
+        foreach (var type in content.Types.Where(t => HandAnchors(t.Id, content.Rules).Count > 0))
+        {
+            var (hands, attempts) = GenerateHands(type, content, options);
+            drills.AddRange(hands);
+            produced.Add((HandsRuleId(type), DrillKinds.Hand, hands.Count, attempts));
         }
 
         var conflicts = ConflictChecker.Check(drills, content.Rules, options.Classifier);
@@ -68,17 +84,44 @@ public static class DrillGenerator
     /// </summary>
     public static (List<Drill> Drills, int Attempts) GenerateForRule(Rule rule, ContentSet content, GeneratorOptions options)
     {
+        var template = LineTemplate.For(rule.Line);
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        return DealSpots(rule, content, options, "rule", options.PerRule,
+            d => ActionDrill(UniqueId($"{rule.Id}-{Rng.Fnv1a32(d.Key):x8}", ids), rule, template, d));
+    }
+
+    /// <summary>A dealt and seated spot that matches a rule, its earlier streets played by the rules.</summary>
+    private sealed record Dealt(
+        IReadOnlyList<Card> Hole,
+        IReadOnlyList<Card> Board,
+        SpotFacts Facts,
+        Spot Spot,
+        StatLine Stats,
+        IReadOnlyList<SeatPlayer> Players,
+        IReadOnlyList<Position> Behind,
+        IReadOnlyList<Position> Others,
+        IReadOnlyList<StreetDecision> Earlier,
+        string Key);
+
+    /// <summary>
+    /// Deals spots for <paramref name="rule"/> until <paramref name="target"/> of them are made into drills by
+    /// <paramref name="make"/> (null = rejected) or the attempt cap. <paramref name="stream"/> names the random
+    /// streams, so single drills ("rule") and hands ("hand") of the same rule are dealt independently.
+    /// </summary>
+    private static (List<Drill> Drills, int Attempts) DealSpots(Rule rule, ContentSet content, GeneratorOptions options,
+        string stream, int target, Func<Dealt, Drill?> make)
+    {
         var types = content.Types;
         var template = LineTemplate.For(rule.Line);
         var villain = types.Single(t => t.Id == rule.VillainType);
-        var rng = Rng.ForLabel(options.Seed, "rule:" + rule.Id);
+        var rng = Rng.ForLabel(options.Seed, $"{stream}:{rule.Id}");
+        var prefix = stream == "rule" ? "" : stream + "-"; // single drills keep their original stream names
         var deck = new Deck(rng);
         var seenSpots = new HashSet<string>(StringComparer.Ordinal);
-        var ids = new HashSet<string>(StringComparer.Ordinal);
         var drills = new List<Drill>();
         var attempts = 0;
 
-        while (drills.Count < options.PerRule && attempts < options.MaxAttempts)
+        while (drills.Count < target && attempts < options.MaxAttempts)
         {
             attempts++;
             deck.Reset();
@@ -93,7 +136,7 @@ public static class DrillGenerator
 
             // Seat the other players and let them act by type. The seating has its own random stream (one per
             // attempt), so it never changes the cards; seatings whose players would break the line are redrawn.
-            var seatRng = Rng.ForLabel(options.Seed, $"seats:{rule.Id}:{attempts}");
+            var seatRng = Rng.ForLabel(options.Seed, $"{prefix}seats:{rule.Id}:{attempts}");
             if (SeatTable(template, spot, villain, types, seatRng) is not { } seated) continue;
             spot = seated.Spot;
             var seatTypes = seated.Types;
@@ -110,32 +153,68 @@ public static class DrillGenerator
 
             var stats = StatSampler.SampleUnambiguous(villain, types, rng);
 
-            // River spots: the flop and turn follow the established rules. Hero plays each street as the matching
-            // rule (or the default) says; villain calls a bet only as often as their fold-to-c-bet allows. Villain's
-            // calls come from their own stream, so the seating never changes which river spots are reached.
-            var path = new List<string>();
-            if (template is SrpToRiverLine river)
+            // Turn and river spots: the earlier streets follow the established rules. Hero plays each street as the
+            // matching rule (or the default) says; villain calls a bet only as often as their fold-to-c-bet allows.
+            // Villain's calls come from their own stream, so the seating never changes which spots are reached.
+            var earlier = new List<StreetDecision>();
+            if (template is SrpLaterStreetLine later)
             {
-                var pathRng = Rng.ForLabel(options.Seed, $"path:{rule.Id}:{attempts}");
+                var pathRng = Rng.ForLabel(options.Seed, $"{prefix}path:{rule.Id}:{attempts}");
                 var callChance = 1 - stats.FoldToCbet / 100.0;
-                var played = river.FollowRules(spot.HeroPosition, board,
+                var played = later.FollowRules(spot.HeroPosition, board,
                     (street, seen) =>
                     {
-                        var (play, why) = HeroPlay(street, hole, seen, villain.Id, content.Rules, options.Classifier);
-                        path.Add($"{street}: {Describe(play)} ({why})");
-                        return play;
+                        var decision = HeroPlay(street, hole, seen, villain.Id, content.Rules, options.Classifier);
+                        earlier.Add(decision);
+                        return decision.Play;
                     },
                     () => pathRng.NextDouble() < callChance);
                 if (played is null) continue;
                 spot = played;
             }
 
-            var id = UniqueId($"{rule.Id}-{Rng.Fnv1a32(key):x8}", ids);
             var players = SeatPlayers(spot, seatTypes, seated.Stats, stats);
-            drills.Add(ActionDrill(id, rule, template, stats, spot, hole, board, facts, players, behind, others, path));
+            if (make(new Dealt(hole, board, facts, spot, stats, players, behind, others, earlier, key)) is { } drill)
+            {
+                drills.Add(drill);
+            }
         }
 
         return (drills, attempts);
+    }
+
+    /// <summary>
+    /// Rules a hand drill can end at: turn and river rules (villain checked to hero on every earlier street) whose
+    /// villain type also has a rule for one of those earlier streets, so the hand asks at least two decisions.
+    /// </summary>
+    public static IReadOnlyList<Rule> HandAnchors(string villainType, IReadOnlyList<Rule> rules) =>
+        rules
+            .Where(r => r.VillainType == villainType && LineTemplate.For(r.Line) is SrpLaterStreetLine later
+                && rules.Any(e => e.VillainType == villainType && later.EarlierStreets.Any(s => CheckedToHeroLine(s) == e.Line)))
+            .OrderBy(r => r.Id, StringComparer.Ordinal)
+            .ToList();
+
+    /// <summary>
+    /// Whole hands against one villain type. For each anchor rule, deals spots that end at it and keeps those where
+    /// a rule also decided an earlier street. Each street a rule decided becomes a decision, in order, and the anchor
+    /// is the last one; streets no rule covers are played by the default and shown as part of the story.
+    /// </summary>
+    public static (List<Drill> Drills, int Attempts) GenerateHands(PlayerType type, ContentSet content, GeneratorOptions options)
+    {
+        var ruleId = HandsRuleId(type);
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        var hands = new List<Drill>();
+        var attempts = 0;
+        foreach (var anchor in HandAnchors(type.Id, content.Rules))
+        {
+            var (made, tried) = DealSpots(anchor, content, options, "hand", options.HandsPerRule,
+                d => d.Earlier.Any(e => e.Rule is not null)
+                    ? HandDrill(UniqueId($"{ruleId}-{Rng.Fnv1a32(d.Key):x8}", ids), ruleId, anchor, d, options.Classifier)
+                    : null);
+            hands.AddRange(made);
+            attempts += tried;
+        }
+        return (hands, attempts);
     }
 
     /// <summary>
@@ -182,24 +261,30 @@ public static class DrillGenerator
                 s.Key == spot.VillainPosition ? villainStats : otherStats[s.Key]))
             .ToList();
 
+    /// <summary>The line whose rules decide hero's play when villain checks to hero on <paramref name="street"/>.</summary>
+    public static LineId? CheckedToHeroLine(Street street) => street switch
+    {
+        Street.Flop => LineId.SRP_HeroIP_FlopVillainChecks,
+        Street.Turn => LineId.SRP_HeroIP_TurnVillainChecks,
+        _ => null,
+    };
+
     /// <summary>
     /// Hero's play on an earlier street when villain checks: the answer of the rule that covers that street
-    /// (the flop: SRP_HeroIP_FlopVillainChecks rules for this villain type; first match by id), else the default.
+    /// (<see cref="CheckedToHeroLine"/> rules for this villain type; first match by id), else the default.
     /// </summary>
-    public static (StreetPlay Play, string Why) HeroPlay(Street street, IReadOnlyList<Card> hole, IReadOnlyList<Card> boardSoFar,
+    public static StreetDecision HeroPlay(Street street, IReadOnlyList<Card> hole, IReadOnlyList<Card> boardSoFar,
         string villainType, IReadOnlyList<Rule> rules, ClassifierOptions classifier)
     {
         var facts = SpotFacts.Analyze(hole, boardSoFar, classifier);
-        if (street == Street.Flop)
-        {
-            var rule = rules
-                .Where(r => r.Line == LineId.SRP_HeroIP_FlopVillainChecks)
-                .OrderBy(r => r.Id, StringComparer.Ordinal)
-                .FirstOrDefault(r => RuleMatcher.Matches(r, villainType, r.Line, facts, Seating.Empty));
-            if (rule is not null) return (PlayFor(rule.Correct), $"rule {rule.Id}");
-        }
+        var line = CheckedToHeroLine(street);
+        var rule = rules
+            .Where(r => r.Line == line)
+            .OrderBy(r => r.Id, StringComparer.Ordinal)
+            .FirstOrDefault(r => RuleMatcher.Matches(r, villainType, r.Line, facts, Seating.Empty));
+        if (rule is not null) return new StreetDecision(street, PlayFor(rule.Correct), rule, $"rule {rule.Id}");
         var draws = facts.Draws == DrawFlags.None ? "" : " + " + string.Join(", ", DrawNames(facts.Draws));
-        return (DefaultPlay(facts), $"default for {facts.HandClass}{draws}");
+        return new StreetDecision(street, DefaultPlay(facts), null, $"default for {facts.HandClass}{draws}");
     }
 
     /// <summary>
@@ -221,12 +306,17 @@ public static class DrillGenerator
         _ => StreetPlay.CheckThrough,
     };
 
-    private static string Describe(StreetPlay play) => play switch
+    /// <summary>"Flop: bet 33%, called (rule overfolder-flop-stab)".</summary>
+    public static string Describe(StreetDecision d)
     {
-        StreetPlay.Bet33Call => "bet 33%, called",
-        StreetPlay.Bet75Call => "bet 75%, called",
-        _ => "check",
-    };
+        var play = d.Play switch
+        {
+            StreetPlay.Bet33Call => "bet 33%, called",
+            StreetPlay.Bet75Call => "bet 75%, called",
+            _ => "check",
+        };
+        return $"{d.Street}: {play} ({d.Why})";
+    }
 
     /// <summary>A drill's seating (types behind hero, types of the other opponents), recomputed from its own actions.</summary>
     public static Seating SeatingOf(Drill drill)
@@ -298,12 +388,17 @@ public static class DrillGenerator
     }
 
     /// <summary>"CallingStation" -> "identify-calling-station".</summary>
-    public static string IdentifyRuleId(PlayerType type)
+    public static string IdentifyRuleId(PlayerType type) => ContentLoader.IdentifyRulePrefix + Kebab(type.Id);
+
+    /// <summary>"CallingStation" -> "hands-calling-station".</summary>
+    public static string HandsRuleId(PlayerType type) => ContentLoader.HandsRulePrefix + Kebab(type.Id);
+
+    private static string Kebab(string name)
     {
-        var sb = new StringBuilder(ContentLoader.IdentifyRulePrefix);
-        for (var i = 0; i < type.Id.Length; i++)
+        var sb = new StringBuilder();
+        for (var i = 0; i < name.Length; i++)
         {
-            var c = type.Id[i];
+            var c = name[i];
             if (char.IsUpper(c) && i > 0) sb.Append('-');
             sb.Append(char.ToLowerInvariant(c));
         }
@@ -334,43 +429,109 @@ public static class DrillGenerator
     public static IReadOnlyList<string> DrawNames(DrawFlags draws) =>
         Enum.GetValues<DrawFlags>().Where(f => f != DrawFlags.None && (draws & f) != 0).Select(f => f.ToString()).ToArray();
 
-    private static Drill ActionDrill(string id, Rule rule, LineTemplate template, StatLine stats, Spot spot,
-        IReadOnlyList<Card> hole, IReadOnlyList<Card> board, SpotFacts facts, IReadOnlyList<SeatPlayer> players,
-        IReadOnlyList<Position> behind, IReadOnlyList<Position> others, IReadOnlyList<string> path) => new()
+    private static Drill ActionDrill(string id, Rule rule, LineTemplate template, Dealt d) => new()
     {
-        Players = players,
-        Behind = behind.Select(p => p.ToString()).ToList(),
-        Others = others.Select(p => p.ToString()).ToList(),
+        Players = d.Players,
+        Behind = d.Behind.Select(p => p.ToString()).ToList(),
+        Others = d.Others.Select(p => p.ToString()).ToList(),
         Id = id,
         RuleId = rule.Id,
         Kind = DrillKinds.Action,
         Line = rule.Line.ToString(),
         VillainType = rule.VillainType,
-        VillainStats = stats,
-        HeroPosition = spot.HeroPosition.ToString(),
-        VillainPosition = spot.VillainPosition.ToString(),
-        Stacks = new Stacks((double)spot.HeroStack, (double)spot.VillainStack),
+        VillainStats = d.Stats,
+        HeroPosition = d.Spot.HeroPosition.ToString(),
+        VillainPosition = d.Spot.VillainPosition.ToString(),
+        Stacks = new Stacks((double)d.Spot.HeroStack, (double)d.Spot.VillainStack),
+        Pot = (double)d.Spot.Pot,
+        ToCall = (double)d.Spot.ToCall,
+        ActionHistory = d.Spot.ActionHistory,
+        Actions = DrillActions(d.Spot),
+        HeroCards = Codes(d.Hole),
+        Board = Codes(d.Board),
+        Question = template.Question,
+        Options = d.Spot.Options,
+        Correct = rule.Correct,
+        Reason = rule.Reason,
+        Facts = FactsOf(d.Facts, d.Hole, d.Earlier.Select(Describe).ToList()),
+    };
+
+    /// <summary>
+    /// One hand: a decision for every earlier street a rule decided (the spot as hero saw it then), then the anchor's.
+    /// Between decisions the hand goes on the way the rules say, which is also how the student sees it continue.
+    /// </summary>
+    private static Drill HandDrill(string id, string ruleId, Rule anchor, Dealt d, ClassifierOptions classifier)
+    {
+        var hero = d.Spot.HeroPosition;
+        var steps = new List<HandStep>();
+        for (var i = 0; i < d.Earlier.Count; i++)
+        {
+            if (d.Earlier[i].Rule is not { } rule) continue;
+            var street = d.Earlier[i].Street;
+            var board = d.Board.Take(LineTemplate.BoardCountAt(street)).ToList();
+            var spot = street == Street.Flop
+                ? new FlopVillainChecksLine().Build(new FlopVillainChecksLine.Params(hero), board)
+                : new TurnVillainChecksLine().Build(new SrpLaterStreetLine.Params(hero, d.Earlier[0].Play), board);
+            steps.Add(Step(rule, spot, d.Hole, board, d.Earlier.Take(i), classifier));
+        }
+        steps.Add(Step(anchor, d.Spot, d.Hole, d.Board, d.Earlier, classifier));
+
+        return new Drill
+        {
+            Id = id,
+            RuleId = ruleId,
+            Kind = DrillKinds.Hand,
+            Line = HandLine,
+            VillainType = anchor.VillainType,
+            VillainStats = d.Stats,
+            HeroPosition = hero.ToString(),
+            VillainPosition = d.Spot.VillainPosition.ToString(),
+            ActionHistory = [],
+            Actions = [],
+            Players = d.Players,
+            Behind = [],
+            Others = [],
+            HeroCards = Codes(d.Hole),
+            Board = Codes(d.Board),
+            Question = HandQuestion,
+            Options = [],
+            Correct = "",
+            Reason = "",
+            Steps = steps,
+        };
+    }
+
+    private static HandStep Step(Rule rule, Spot spot, IReadOnlyList<Card> hole, IReadOnlyList<Card> board,
+        IEnumerable<StreetDecision> before, ClassifierOptions classifier) => new()
+    {
+        RuleId = rule.Id,
+        Line = rule.Line.ToString(),
         Pot = (double)spot.Pot,
         ToCall = (double)spot.ToCall,
+        Stacks = new Stacks((double)spot.HeroStack, (double)spot.VillainStack),
         ActionHistory = spot.ActionHistory,
-        Actions = spot.Actions
-            .Select(a => new DrillAction(a.Street.ToString(), a.Seat.ToString(), a.Kind.ToString(), (double)a.To))
-            .ToList(),
-        HeroCards = hole.Select(c => c.ToString()).ToList(),
-        Board = board.Select(c => c.ToString()).ToList(),
-        Question = template.Question,
+        Actions = DrillActions(spot),
+        Board = Codes(board),
+        Question = LineTemplate.For(rule.Line).Question,
         Options = spot.Options,
         Correct = rule.Correct,
         Reason = rule.Reason,
-        Facts = new DrillFacts(
-            facts.HandClass?.ToString(),
-            DrawNames(facts.Draws),
-            BoardAnalyzer.Names(facts.BoardFlags),
-            facts.HighCard is { } high ? Ranks.ToChar(high).ToString(CultureInfo.InvariantCulture) : null,
-            facts.HandGroup?.ToString(),
-            PreflopGroups.Notation(hole),
-            path),
+        Facts = FactsOf(SpotFacts.Analyze(hole, board, classifier), hole, before.Select(Describe).ToList()),
     };
+
+    private static DrillFacts FactsOf(SpotFacts facts, IReadOnlyList<Card> hole, IReadOnlyList<string> path) => new(
+        facts.HandClass?.ToString(),
+        DrawNames(facts.Draws),
+        BoardAnalyzer.Names(facts.BoardFlags),
+        facts.HighCard is { } high ? Ranks.ToChar(high).ToString(CultureInfo.InvariantCulture) : null,
+        facts.HandGroup?.ToString(),
+        PreflopGroups.Notation(hole),
+        path);
+
+    private static IReadOnlyList<DrillAction> DrillActions(Spot spot) =>
+        spot.Actions.Select(a => new DrillAction(a.Street.ToString(), a.Seat.ToString(), a.Kind.ToString(), (double)a.To)).ToList();
+
+    private static IReadOnlyList<string> Codes(IEnumerable<Card> cards) => cards.Select(c => c.ToString()).ToList();
 
     private static string UniqueId(string id, HashSet<string> used)
     {
@@ -385,6 +546,13 @@ public static class DrillGenerator
                 r.Correct, r.Reason, r.Placeholder))
             .Concat(content.Types.Select(t => new RuleSummary(IdentifyRuleId(t), DrillKinds.Identify, t.Id, IdentifyLine,
                 "Stat line inside this type's ranges only", t.Id, IdentifyReason(t), t.Placeholder)))
+            .Concat(content.Types.Where(t => HandAnchors(t.Id, content.Rules).Count > 0).Select(t => new RuleSummary(
+                HandsRuleId(t), DrillKinds.Hand, t.Id, HandLine,
+                $"One hand, street by street, ending at {string.Join(" or ", HandAnchors(t.Id, content.Rules).Select(r => r.Id))}; "
+                + "every earlier street a rule covers is a decision too (at least one), the other streets follow the default play",
+                "Each decision has its own rule",
+                "Each decision is graded by its own rule. After a wrong answer the hand goes on along the correct line.",
+                content.Rules.Any(r => r.VillainType == t.Id && r.Placeholder))))
             .ToList();
 
     private static IReadOnlyList<TypeSummary> TypeSummaries(ContentSet content) =>
@@ -395,42 +563,57 @@ public static class DrillGenerator
 public static class ConflictChecker
 {
     /// <summary>
-    /// Re-analyses every action drill from its cards and seating and tests it against every other rule on the
-    /// same line. Another rule matching (same villain type, hand, board and players behind) with a different
-    /// correct answer is a conflict. One entry per (rule, other rule) pair, with a count and an example.
+    /// Re-analyses every decision (action drills, and each step of a hand) from its cards and seating and tests it
+    /// against every other rule on the same line. Another rule matching (same villain type, hand, board and players
+    /// behind) with a different correct answer is a conflict. One entry per (rule, other rule) pair, with a count and
+    /// an example.
     /// </summary>
     public static IReadOnlyList<Conflict> Check(IEnumerable<Drill> drills, IReadOnlyList<Rule> rules, ClassifierOptions options)
     {
         var rulesByLine = rules.GroupBy(r => r.Line).ToDictionary(g => g.Key, g => g.ToList());
-        var found = new Dictionary<(string Rule, string Other), (int Count, Drill Example, string OtherCorrect)>();
+        var found = new Dictionary<(string Rule, string Other), (int Count, Drill Example, string Correct, string OtherCorrect)>();
 
-        foreach (var drill in drills.Where(d => d.Kind == DrillKinds.Action))
+        foreach (var drill in drills)
         {
-            var line = Enum.Parse<LineId>(drill.Line);
-            if (!rulesByLine.TryGetValue(line, out var candidates)) continue;
-
-            var hole = drill.HeroCards.Select(Card.Parse).ToArray();
-            var board = drill.Board.Select(Card.Parse).ToArray();
-            var facts = SpotFacts.Analyze(hole, board, options);
-            var seating = DrillGenerator.SeatingOf(drill);
-
-            foreach (var other in candidates)
+            foreach (var (ruleId, line, correct, boardCodes, seating) in Decisions(drill))
             {
-                if (other.Id == drill.RuleId || other.Correct == drill.Correct) continue;
-                if (!RuleMatcher.Matches(other, drill.VillainType, line, facts, seating)) continue;
+                if (!rulesByLine.TryGetValue(line, out var candidates)) continue;
 
-                var key = (drill.RuleId, other.Id);
-                found[key] = found.TryGetValue(key, out var f)
-                    ? (f.Count + 1, f.Example, f.OtherCorrect)
-                    : (1, drill, other.Correct);
+                var hole = drill.HeroCards.Select(Card.Parse).ToArray();
+                var board = boardCodes.Select(Card.Parse).ToArray();
+                var facts = SpotFacts.Analyze(hole, board, options);
+
+                foreach (var other in candidates)
+                {
+                    if (other.Id == ruleId || other.Correct == correct) continue;
+                    if (!RuleMatcher.Matches(other, drill.VillainType, line, facts, seating)) continue;
+
+                    var key = (ruleId, other.Id);
+                    found[key] = found.TryGetValue(key, out var f)
+                        ? (f.Count + 1, f.Example, f.Correct, f.OtherCorrect)
+                        : (1, drill, correct, other.Correct);
+                }
             }
         }
 
         return found
             .OrderBy(kv => kv.Key.Rule, StringComparer.Ordinal)
             .ThenBy(kv => kv.Key.Other, StringComparer.Ordinal)
-            .Select(kv => new Conflict(kv.Key.Rule, kv.Key.Other, kv.Value.Example.Correct, kv.Value.OtherCorrect,
+            .Select(kv => new Conflict(kv.Key.Rule, kv.Key.Other, kv.Value.Correct, kv.Value.OtherCorrect,
                 kv.Value.Count, kv.Value.Example))
             .ToList();
+    }
+
+    /// <summary>What a drill asks: an action drill's one decision, or each step of a hand (heads-up, nobody behind).</summary>
+    private static IEnumerable<(string RuleId, LineId Line, string Correct, IReadOnlyList<string> Board, Seating Seating)> Decisions(Drill drill)
+    {
+        if (drill.Kind == DrillKinds.Action)
+        {
+            yield return (drill.RuleId, Enum.Parse<LineId>(drill.Line), drill.Correct, drill.Board, DrillGenerator.SeatingOf(drill));
+        }
+        foreach (var step in drill.Steps ?? [])
+        {
+            yield return (step.RuleId, Enum.Parse<LineId>(step.Line), step.Correct, step.Board, Seating.Empty);
+        }
     }
 }

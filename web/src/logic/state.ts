@@ -1,5 +1,6 @@
 import type { Drill } from '../types';
 import { addDays, type DateKey } from './dates';
+import { answersFor, decisionCount, decisionsOf } from './hand';
 import { scheduleAnswer, type DrillProgress } from './leitner';
 
 export const STORAGE_KEY = 'pokerDrills.v1';
@@ -8,6 +9,8 @@ export interface Answer {
   drillId: string;
   chosen: string;
   correct: boolean;
+  /** Hand drills: which decision (0-based); a hand gets one answer per decision. */
+  step?: number;
 }
 
 export interface ActiveSession {
@@ -82,21 +85,30 @@ export function startSession(state: AppState, drills: readonly Drill[], today: D
   return { ...state, session: { date: today, drillIds: drills.map((d) => d.id), answers: [], completed: false } };
 }
 
-/** Applies one answer: Leitner box, per-type accuracy, session log. Repeat answers are ignored. */
-export function recordAnswer(state: AppState, drill: Drill, chosen: string, today: DateKey): AppState {
+/**
+ * Applies one answer: per-type accuracy and the session log, plus the Leitner box once the drill is fully answered.
+ * A hand takes its decisions in order (`step` 0, 1, ...) and moves up a box only if every one was right.
+ * Repeat or out-of-order answers are ignored.
+ */
+export function recordAnswer(state: AppState, drill: Drill, chosen: string, today: DateKey, step = 0): AppState {
   const s = state.session;
-  if (!s || s.completed || !s.drillIds.includes(drill.id) || s.answers.some((a) => a.drillId === drill.id)) return state;
+  if (!s || s.completed || !s.drillIds.includes(drill.id)) return state;
+  const given = answersFor(drill, s.answers);
+  if (step !== given.length || step >= decisionCount(drill)) return state;
 
-  const correct = chosen === drill.correct;
+  const correct = chosen === decisionsOf(drill)[step].correct;
+  const done = step === decisionCount(drill) - 1;
+  const allCorrect = correct && given.every((a) => a.correct);
   const stat = state.typeStats[drill.villainType] ?? { correct: 0, total: 0 };
+  const answer: Answer = drill.kind === 'hand' ? { drillId: drill.id, chosen, correct, step } : { drillId: drill.id, chosen, correct };
   return {
     ...state,
-    progress: { ...state.progress, [drill.id]: scheduleAnswer(state.progress[drill.id], correct, today) },
+    progress: done ? { ...state.progress, [drill.id]: scheduleAnswer(state.progress[drill.id], allCorrect, today) } : state.progress,
     typeStats: {
       ...state.typeStats,
       [drill.villainType]: { correct: stat.correct + (correct ? 1 : 0), total: stat.total + 1 },
     },
-    session: { ...s, answers: [...s.answers, { drillId: drill.id, chosen, correct }] },
+    session: { ...s, answers: [...s.answers, answer] },
   };
 }
 

@@ -42,7 +42,8 @@ BoardFlags  Paired Monotone TwoTone Rainbow FourToFlush FourToStraight Dry  (+ H
 HandGroup   Trash Playable Strong Premium
 Position    UTG MP CO BTN SB BB   (6-max)
 LineId      Pre_IsoVsLimper SRP_HeroIP_FlopVillainChecks SRP_HeroOOP_FacingFlopCbet
-            SRP_HeroIP_RiverVillainChecks SRP_HeroIP_FacingRiverBet
+            SRP_HeroIP_RiverVillainChecks SRP_HeroIP_FacingRiverBet Pre_FacingThreeBet
+            SRP_3Way_FlopCheckedToHero SRP_HeroIP_TurnVillainChecks
 ```
 
 ## Mechanics decisions
@@ -89,6 +90,7 @@ Raises facing a bet = raise to 3 x bet (capped at stack = all-in). Stacks report
 | Pre_IsoVsLimper | V in {MP, CO}, H after V in {CO, BTN} | folds, V limps 1, folds | 2.5 | Fold, Limp, Iso3 (to 3bb), Iso5 (to 5bb) |
 | SRP_HeroIP_FlopVillainChecks | H in {UTG, MP, CO, BTN} opens, V=BB calls | V checks flop | 5.5 | Check, Bet33, Bet75 |
 | SRP_HeroOOP_FacingFlopCbet | V in {UTG, MP, CO, BTN} opens, H=BB calls | H checks, V bets 33% or 75% | 5.5 + bet | Fold, Call, Raise |
+| SRP_HeroIP_TurnVillainChecks | as line 2 | flop: V checks, H checks back or bets 33%/75% by rule/default and V calls (see below); V checks turn | computed | Check, Bet33, Bet75 |
 | SRP_HeroIP_RiverVillainChecks | as line 2 | flop & turn each: V checks, then H checks back or bets 33%/75% by rule/default and V calls (see below); V checks river | computed | Check, Bet33, Bet75, Bet150 |
 | SRP_HeroIP_FacingRiverBet | as line 4 | ... V bets 75% river | computed + bet | Fold, Call, Raise |
 | Pre_FacingThreeBet | H in {UTG, MP, CO, BTN} opens, V any seat after H | V 3-bets 3x IP / 4x from blinds, rest fold | open + 3-bet + dead blinds | Fold, Call, FourBet (2.5x) |
@@ -97,14 +99,27 @@ Raises facing a bet = raise to 3 x bet (capped at stack = all-in). Stacks report
 Rule seating conditions: `behind` (players still to act after hero, iso only) and `others` (opponents in the hand
 besides villain: extra limpers, the 3-way SB). Drills carry `behind` and `others` seats (schemaVersion 5).
 
-### River spots follow the rules (`SrpToRiverLine.FollowRules`, `DrillGenerator.HeroPlay`)
-`TryBuild` only picks hero's seat. After villain's HUD is drawn, the generator plays flop and turn: hero's play is
-the first `SRP_HeroIP_FlopVillainChecks` rule (by id) matching villain type + flop cards with no seating
-(Check → check back, Bet33/Bet75 → bet and called), else `DefaultPlay` (TPGK+ → 75%, SecondPair+ or FD/OE → 33%,
-else check). The turn has no rules yet and always uses the default. When hero bets, villain calls with probability
-1 − FoldToCbet/100 from the `path:{rule}:{attempt}` stream; a fold drops the deal. `facts.path` records each street
-("Flop: check (rule station-flop-no-stab)"). The plays are part of the spot, so river drill ids changed with this
-(saved progress on the old river drills is simply no longer used, as for any removed drill).
+### Turn and river spots follow the rules (`SrpLaterStreetLine.FollowRules`, `DrillGenerator.HeroPlay`)
+`SrpLaterStreetLine` is the base of the turn and river lines; `EarlierStreets` = flop (turn line) or flop + turn.
+`TryBuild` only picks hero's seat. After villain's HUD is drawn, the generator plays the earlier streets: hero's play
+is the first rule (by id) on that street's checked-to-hero line (`CheckedToHeroLine`: flop →
+SRP_HeroIP_FlopVillainChecks, turn → SRP_HeroIP_TurnVillainChecks) matching villain type + cards seen so far with no
+seating (Check → check back, Bet33/Bet75 → bet and called), else `DefaultPlay` (TPGK+ → 75%, SecondPair+ or FD/OE →
+33%, else check). When hero bets, villain calls with probability 1 − FoldToCbet/100 from the `path:{rule}:{attempt}`
+stream; a fold drops the deal. `facts.path` records each street ("Flop: check (rule station-flop-no-stab)").
+The plays are part of the spot, so river drill ids changed when this came in (saved progress on the old river drills
+is simply no longer used, as for any removed drill).
+
+### Hand drills (`DrillGenerator.GenerateHands`, `HandAnchors`)
+Several decisions in one hand. Anchors = rules on a `SrpLaterStreetLine` whose villain type also has a rule on the
+checked-to-hero line of one of its earlier streets. Per anchor, `DealSpots` deals like the rule's own drills but on
+streams `hand:{rule}`, `hand-seats:…`, `hand-path:…` (single drills keep theirs), keeping deals where a rule decided at
+least one earlier street, up to `HandsPerRule` (50). Steps = one per rule-decided earlier street (the spot built by
+FlopVillainChecksLine / TurnVillainChecksLine with the plays so far) + the anchor's spot. Between steps the hand goes
+on along the rule's answer (bet → villain calls), so each step's `actions` extend the previous step's. Hands are
+grouped per villain type: `ruleId = hands-<type>`, one rules[] summary each. The conflict checker checks every step.
+In the app a wrong answer is corrected and the hand continues along the correct line (no branching on the student's
+choice).
 
 ### Preflop ranges (`content/ranges.json`)
 In the postflop lines hero's hand must fit the preflop action. `open[seat]` = hands hero opens from
@@ -142,7 +157,7 @@ Rule matching = same line AND same villain type AND hand/board conditions.
 `web/public/drills.json`
 ```jsonc
 {
-  "schemaVersion": 4, "seed": 42,
+  "schemaVersion": 6, "seed": 42,
   "rules": [ { "id", "kind", "villainType", "line", "conditions", "correct", "reason", "placeholder" } ],
   "types": [ { "id", "name", "description", "ranges" } ],
   "drills": [ {
@@ -160,22 +175,30 @@ Rule matching = same line AND same villain type AND hand/board conditions.
     // schemaVersion 4: seats still to act after hero (no voluntary action yet; empty postflop). Rules can
     // require/exclude player types among them ("behind"); the seating is drawn per attempt, before the rule check.
     "behind": [ "SB", "BB" ],
+    // schemaVersion 5: other opponents still in the hand besides villain (extra limpers, the 3-way SB).
+    "others": [],
     "heroCards": ["As","Kd"], "board": ["Ks","7d","2c"],
     "question": "...", "options": [ { "id": "Bet33", "label": "Bet 33% (1.8bb)" } ],
     "correct": "Bet33", "reason": "...",
-    "facts": { "handClass", "draws": [], "boardFlags": [], "highCard", "handGroup" }   // for coach review
+    "facts": { "handClass", "draws": [], "boardFlags": [], "highCard", "handGroup", "hand", "path": [] },  // for coach review
+    // schemaVersion 6, kind "hand" only: the decisions in order. The drill keeps the shared fields (players,
+    // villain, positions, heroCards, full board); its question/options/correct/reason are empty, pot/stacks null.
+    "steps": [ { "ruleId", "line", "pot", "toCall", "stacks", "actionHistory", "actions", "board",
+                 "question", "options", "correct", "reason", "facts" } ]
   } ]
 }
 ```
 Identify drills: `ruleId = identify-<type>`, no cards/positions, options = the 5 types.
+Hand drills: `ruleId = hands-<type>`, `line = "Hand"`, `steps` as above (left out of other drills).
 
 ## Generator
 - Per rule: RNG = xoshiro(seed derived from --seed + rule id). Rules processed sorted by id.
 - Attempt: deal 2 + boardCount cards, analyse, check rule, dedupe on hand+board (preflop: hand+positions,
   since there is no board), build line, sample villain stats, emit. Stop at --per-rule or 200,000 attempts.
 - Identify: 100 samples per type, keep lines inside exactly one type, dedupe.
-- Conflict checker: re-analyse every action drill against every rule with the same line (and villain type);
-  a match with a different `correct` is a conflict -> print rule pair + example, exit 1, no file written.
+- Hands: per villain type with anchors, 50 per anchor (see "Hand drills").
+- Conflict checker: re-analyse every action drill and every hand step against every rule with the same line (and
+  villain type); a match with a different `correct` is a conflict -> print rule pair + example, exit 1, no file written.
 - Table: rule, drills, attempts, warnings (< 50 drills), conflicts.
 
 ## Web app
@@ -188,6 +211,10 @@ Identify drills: `ruleId = identify-<type>`, no cards/positions, options = the 5
   (all identify drills share one rotation slot), then ordered so no two consecutive drills share a rule,
   preferring alternating villain types and lines. Active session persisted -> survives reload.
 - Streak: +1 when a session completes on the day after the last completed session; same day no change; else 1.
+- Hands (`logic/hand.ts`): `decisionsOf` turns a hand into one action drill per step (id `<hand>#n`), so DrillView,
+  the table and the summary work unchanged. Answers carry `step`; a hand is done when every step is answered, its
+  Leitner box moves once (up only if all steps were right), typeStats count each decision. The table replay of
+  step n starts at the action count of step n-1.
 
 ## Tests
 engine.tests: evaluator, classifier (40+ cases), draws, each board flag +/-, preflop groups, each line's pot math,

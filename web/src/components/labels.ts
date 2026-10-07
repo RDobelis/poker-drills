@@ -1,12 +1,14 @@
 export const LINE_LABELS: Record<string, string> = {
   Pre_IsoVsLimper: 'Preflop · villain limps',
   SRP_HeroIP_FlopVillainChecks: 'Flop · villain checks',
+  SRP_HeroIP_TurnVillainChecks: 'Turn · villain checks',
   SRP_HeroOOP_FacingFlopCbet: 'Flop · facing c-bet',
   SRP_HeroIP_RiverVillainChecks: 'River · villain checks',
   SRP_HeroIP_FacingRiverBet: 'River · facing bet',
   Pre_FacingThreeBet: 'Preflop · facing a 3-bet',
   SRP_3Way_FlopCheckedToHero: 'Flop · 3-way, checked to you',
   Identify: 'Read the HUD',
+  Hand: 'Whole hand',
 };
 
 export const lineLabel = (line: string): string => LINE_LABELS[line] ?? line;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Drill } from '../types';
 import { addDays } from './dates';
+import { decisionsOf, isDone } from './hand';
 import { scheduleAnswer, type DrillProgress } from './leitner';
 import { arrange, buildSession, canArrange, MAX_PER_RULE, SESSION_SIZE } from './session';
 import {
@@ -55,6 +56,31 @@ function drill(id: string, ruleId: string, villainType = 'Nit', line = 'L', kind
     correct: 'A',
     reason: 'r',
     facts: null,
+  };
+}
+
+/** A hand drill whose decisions have these correct answers (options A and B each). */
+function hand(id: string, correct: string[]): Drill {
+  const base = drill(id, 'hands-calling-station', 'CallingStation', 'Hand', 'hand');
+  return {
+    ...base,
+    options: [],
+    correct: '',
+    steps: correct.map((c, i) => ({
+      ruleId: `rule-${i}`,
+      line: 'L',
+      pot: 5.5,
+      toCall: 0,
+      stacks: { hero: 97.5, villain: 97.5 },
+      actionHistory: [],
+      actions: [],
+      board: [],
+      question: `q${i}`,
+      options: base.options,
+      correct: c,
+      reason: `r${i}`,
+      facts: { handClass: null, draws: [], boardFlags: [], highCard: null, handGroup: null, hand: null },
+    })),
   };
 }
 
@@ -205,6 +231,45 @@ describe('app state', () => {
     expect(s.progress[drills[1].id]).toMatchObject({ box: 1, due: '2026-10-06' });
     expect(s.typeStats.Nit).toEqual({ correct: 1, total: 2 });
     expect(s.session?.answers.map((a) => a.correct)).toEqual([true, false]);
+  });
+
+  it('turns a hand into one action drill per decision', () => {
+    const decisions = decisionsOf(hand('h', ['A', 'B']));
+    expect(decisions.map((d) => [d.id, d.kind, d.ruleId, d.correct, d.reason])).toEqual([
+      ['h#1', 'action', 'rule-0', 'A', 'r0'],
+      ['h#2', 'action', 'rule-1', 'B', 'r1'],
+    ]);
+    expect(decisions.every((d) => d.villainType === 'CallingStation' && d.steps === undefined)).toBe(true);
+    const single = drills[0];
+    expect(decisionsOf(single)).toEqual([single]);
+  });
+
+  it('takes a hand decision by decision and moves its box once, up only if every decision was right', () => {
+    const h = hand('h1', ['A', 'B', 'A']);
+    let s = startSession(emptyState(), [h], TODAY);
+    s = recordAnswer(s, h, 'A', TODAY, 0);
+    expect(recordAnswer(s, h, 'B', TODAY, 0)).toBe(s); // the same decision again
+    expect(recordAnswer(s, h, 'A', TODAY, 2)).toBe(s); // skipping one
+    expect(s.progress.h1).toBeUndefined(); // not finished yet
+    expect(isDone(h, s.session!.answers)).toBe(false);
+
+    s = recordAnswer(s, h, 'A', TODAY, 1); // wrong: B was right
+    s = recordAnswer(s, h, 'A', TODAY, 2);
+    expect(s.session!.answers.map((a) => [a.step, a.correct])).toEqual([
+      [0, true],
+      [1, false],
+      [2, true],
+    ]);
+    expect(isDone(h, s.session!.answers)).toBe(true);
+    expect(s.progress.h1).toMatchObject({ box: 1, due: '2026-10-06', seen: 1 }); // one miss sends the hand back
+    expect(s.typeStats.CallingStation).toEqual({ correct: 2, total: 3 }); // accuracy counts every decision
+    expect(recordAnswer(s, h, 'A', TODAY, 3)).toBe(s);
+
+    const perfect = hand('h2', ['A', 'B']);
+    let p = startSession(emptyState(), [perfect], TODAY);
+    p = recordAnswer(p, perfect, 'A', TODAY, 0);
+    p = recordAnswer(p, perfect, 'B', TODAY, 1);
+    expect(p.progress.h2).toMatchObject({ box: 2, due: '2026-10-07', correct: 1 });
   });
 
   it('ignores answers for drills outside the session', () => {

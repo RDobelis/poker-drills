@@ -16,6 +16,7 @@ public enum LineId
     SRP_HeroIP_FacingRiverBet,
     Pre_FacingThreeBet,
     SRP_3Way_FlopCheckedToHero,
+    SRP_HeroIP_TurnVillainChecks,
 }
 
 public enum ActionKind { Post, Fold, Limp, Raise, Call, Check, Bet }
@@ -104,13 +105,20 @@ public abstract class LineTemplate
     /// <summary>Whether opponents besides villain can still be in the hand at the decision.</summary>
     public virtual bool CanHaveOtherOpponents => false;
 
-    public int BoardCardCount => DecisionStreet switch
+    public int BoardCardCount => BoardCountAt(DecisionStreet);
+
+    /// <summary>Board cards visible on a street: 0, 3, 4, 5.</summary>
+    public static int BoardCountAt(Street street) => street switch
     {
         Street.Preflop => 0,
         Street.Flop => 3,
         Street.Turn => 4,
         _ => 5,
     };
+
+    /// <summary>The cards dealt on a street: the three flop cards, or the turn or river card.</summary>
+    protected static IEnumerable<Card> DealtOn(Street street, IReadOnlyList<Card> board) =>
+        street == Street.Flop ? board.Take(3) : [board[BoardCountAt(street) - 1]];
 
     /// <summary>Randomises positions and earlier-street action within the template's limits.</summary>
     public abstract Spot Build(Rng rng, IReadOnlyList<Card> board);
@@ -160,6 +168,7 @@ public abstract class LineTemplate
         new FacingRiverBetLine(),
         new FacingThreeBetLine(),
         new ThreeWayFlopLine(),
+        new TurnVillainChecksLine(),
     }.ToDictionary(t => t.Id);
 
     public static LineTemplate For(LineId id) => All[id];
@@ -439,71 +448,86 @@ public sealed class FacingFlopCbetLine : LineTemplate
     }
 }
 
-/// <summary>What happens on the flop or turn before the river decision.</summary>
+/// <summary>What hero does on a street villain checks to hero, before the decision street.</summary>
 public enum StreetPlay { CheckThrough, Bet33Call, Bet75Call }
 
 /// <summary>
-/// Hero opens, villain calls in the BB. On flop and turn villain checks and hero either checks back or bets
-/// 33%/75% and gets called: the generator plays those streets by the rules (<see cref="FollowRules"/>);
-/// <see cref="Build(Rng, IReadOnlyList{Card})"/> samples them (50% check, 25% each bet). Subclasses define the river action.
+/// Hero opens, villain calls in the BB and checks to hero on every street. On the streets before the decision
+/// (<see cref="EarlierStreets"/>) hero checks back or bets 33%/75% and gets called: the generator plays those
+/// streets by the rules (<see cref="FollowRules"/>); <see cref="Build(Rng, IReadOnlyList{Card})"/> samples them
+/// (50% check, 25% each bet). Subclasses define the decision street and villain's action on it.
 /// </summary>
-public abstract class SrpToRiverLine : LineTemplate
+public abstract class SrpLaterStreetLine : LineTemplate
 {
-    public sealed record Params(Position Hero, StreetPlay Flop, StreetPlay Turn);
+    /// <param name="Turn">Hero's turn play; only river spots have one (it must stay CheckThrough on turn spots).</param>
+    public sealed record Params(Position Hero, StreetPlay Flop, StreetPlay Turn = StreetPlay.CheckThrough);
 
     public static IReadOnlyList<Position> HeroSeats { get; } = [Position.UTG, Position.MP, Position.CO, Position.BTN];
 
-    public override Street DecisionStreet => Street.River;
+    /// <summary>Streets hero has played before the decision: the flop, and on river spots the turn.</summary>
+    public IReadOnlyList<Street> EarlierStreets => DecisionStreet == Street.Turn ? [Street.Flop] : [Street.Flop, Street.Turn];
 
     public override Spot Build(Rng rng, IReadOnlyList<Card> board) =>
-        Build(new Params(rng.Pick(HeroSeats), SamplePlay(rng), SamplePlay(rng)), board);
+        Build(new Params(rng.Pick(HeroSeats), SamplePlay(rng),
+            DecisionStreet == Street.River ? SamplePlay(rng) : StreetPlay.CheckThrough), board);
 
     /// <summary>
-    /// Picks the seat only; the flop and turn are checked through here and filled in by <see cref="FollowRules"/>,
+    /// Picks the seat only; the earlier streets are checked through here and filled in by <see cref="FollowRules"/>,
     /// which the generator calls once it knows villain's HUD.
     /// </summary>
     public override Spot? TryBuild(Rng rng, IReadOnlyList<Card> hole, IReadOnlyList<Card> board, PreflopRanges ranges)
     {
         var seat = rng.Pick(HeroSeats);
         if (!ranges.CanOpen(seat, hole)) return null;
-        return Build(new Params(seat, StreetPlay.CheckThrough, StreetPlay.CheckThrough), board);
+        return Build(new Params(seat, StreetPlay.CheckThrough), board);
     }
 
     /// <summary>
-    /// Plays the flop and turn the way the established rules say: <paramref name="heroPlay"/> decides hero's play on
+    /// Plays the earlier streets the way the established rules say: <paramref name="heroPlay"/> decides hero's play on
     /// each street from the cards seen so far, and when hero bets <paramref name="villainCalls"/> decides whether
-    /// villain calls. Null when villain would have folded before the river (this river spot isn't reached that way).
+    /// villain calls. Null when villain would have folded first (this spot isn't reached that way).
     /// </summary>
     public Spot? FollowRules(Position hero, IReadOnlyList<Card> board,
         Func<Street, IReadOnlyList<Card>, StreetPlay> heroPlay, Func<bool> villainCalls)
     {
         RequireBoard(board);
-        var flop = heroPlay(Street.Flop, board.Take(3).ToList());
-        if (flop != StreetPlay.CheckThrough && !villainCalls()) return null;
-        var turn = heroPlay(Street.Turn, board.Take(4).ToList());
-        if (turn != StreetPlay.CheckThrough && !villainCalls()) return null;
-        return Build(new Params(hero, flop, turn), board);
+        var plays = new List<StreetPlay>();
+        foreach (var street in EarlierStreets)
+        {
+            var play = heroPlay(street, board.Take(BoardCountAt(street)).ToList());
+            if (play != StreetPlay.CheckThrough && !villainCalls()) return null;
+            plays.Add(play);
+        }
+        return Build(new Params(hero, plays[0], plays.Count > 1 ? plays[1] : StreetPlay.CheckThrough), board);
     }
 
     public Spot Build(Params p, IReadOnlyList<Card> board)
     {
         RequireBoard(board);
         if (!HeroSeats.Contains(p.Hero)) throw new ArgumentException($"Unsupported hero seat {p.Hero}", nameof(p));
+        if (DecisionStreet == Street.Turn && p.Turn != StreetPlay.CheckThrough)
+        {
+            throw new ArgumentException("A turn spot has no turn play before the decision", nameof(p));
+        }
 
         var pot = Stakes.SrpPot;
         var stack = Stakes.StartingStack - Stakes.OpenSize; // both players have the same behind throughout
         var history = new List<string> { OpenCalledByBigBlind(p.Hero, "Hero", "Villain") };
         var steps = OpenCalledByBigBlindSteps(p.Hero);
 
-        var flopHeader = StreetHeader("Flop", board.Take(3), pot);
-        history.Add($"{flopHeader} {Play(p.Flop, Street.Flop, p.Hero, ref pot, ref stack, steps)}");
-        var turnHeader = StreetHeader("Turn", [board[3]], pot);
-        history.Add($"{turnHeader} {Play(p.Turn, Street.Turn, p.Hero, ref pot, ref stack, steps)}");
+        foreach (var street in EarlierStreets)
+        {
+            var header = StreetHeader(street.ToString(), DealtOn(street, board), pot);
+            var play = street == Street.Flop ? p.Flop : p.Turn;
+            history.Add($"{header} {Play(play, street, p.Hero, ref pot, ref stack, steps)}");
+        }
 
-        return BuildRiver(p, board[4], pot, stack, history, steps);
+        return BuildDecision(p, board, pot, stack, history, steps);
     }
 
-    protected abstract Spot BuildRiver(Params p, Card river, decimal pot, decimal stack, List<string> history, List<ActionStep> steps);
+    /// <summary>Adds the decision street (its header and villain's action) to a hand played up to it.</summary>
+    protected abstract Spot BuildDecision(Params p, IReadOnlyList<Card> board, decimal pot, decimal stack,
+        List<string> history, List<ActionStep> steps);
 
     private static StreetPlay SamplePlay(Rng rng) => rng.NextInt(4) switch
     {
@@ -531,15 +555,40 @@ public abstract class SrpToRiverLine : LineTemplate
     }
 }
 
-public sealed class RiverVillainChecksLine : SrpToRiverLine
+/// <summary>Hero opens, villain calls in the BB; the flop is played; villain checks the turn.</summary>
+public sealed class TurnVillainChecksLine : SrpLaterStreetLine
+{
+    public override LineId Id => LineId.SRP_HeroIP_TurnVillainChecks;
+    public override Street DecisionStreet => Street.Turn;
+    public override IReadOnlyList<string> OptionIds { get; } = ["Check", "Bet33", "Bet75"];
+    public override string Question => "Villain checks the turn. What do you do?";
+
+    protected override Spot BuildDecision(Params p, IReadOnlyList<Card> board, decimal pot, decimal stack,
+        List<string> history, List<ActionStep> steps)
+    {
+        history.Add($"{StreetHeader("Turn", [board[3]], pot)} Villain checks.");
+        steps.Add(new ActionStep(Street.Turn, Position.BB, ActionKind.Check, 0m));
+        IReadOnlyList<DrillOption> options =
+        [
+            new("Check", "Check"),
+            BetOption("Bet33", 33, pot, stack),
+            BetOption("Bet75", 75, pot, stack),
+        ];
+        return new Spot(Id, p.Hero, Position.BB, pot, 0m, stack, stack, history, steps, options);
+    }
+}
+
+public sealed class RiverVillainChecksLine : SrpLaterStreetLine
 {
     public override LineId Id => LineId.SRP_HeroIP_RiverVillainChecks;
+    public override Street DecisionStreet => Street.River;
     public override IReadOnlyList<string> OptionIds { get; } = ["Check", "Bet33", "Bet75", "Bet150"];
     public override string Question => "Villain checks the river. What do you do?";
 
-    protected override Spot BuildRiver(Params p, Card river, decimal pot, decimal stack, List<string> history, List<ActionStep> steps)
+    protected override Spot BuildDecision(Params p, IReadOnlyList<Card> board, decimal pot, decimal stack,
+        List<string> history, List<ActionStep> steps)
     {
-        history.Add($"{StreetHeader("River", [river], pot)} Villain checks.");
+        history.Add($"{StreetHeader("River", [board[4]], pot)} Villain checks.");
         steps.Add(new ActionStep(Street.River, Position.BB, ActionKind.Check, 0m));
         IReadOnlyList<DrillOption> options =
         [
@@ -552,18 +601,20 @@ public sealed class RiverVillainChecksLine : SrpToRiverLine
     }
 }
 
-public sealed class FacingRiverBetLine : SrpToRiverLine
+public sealed class FacingRiverBetLine : SrpLaterStreetLine
 {
     public const int RiverBetPercent = 75;
 
     public override LineId Id => LineId.SRP_HeroIP_FacingRiverBet;
+    public override Street DecisionStreet => Street.River;
     public override IReadOnlyList<string> OptionIds { get; } = ["Fold", "Call", "Raise"];
     public override string Question => "Villain bets the river. What do you do?";
 
-    protected override Spot BuildRiver(Params p, Card river, decimal pot, decimal stack, List<string> history, List<ActionStep> steps)
+    protected override Spot BuildDecision(Params p, IReadOnlyList<Card> board, decimal pot, decimal stack,
+        List<string> history, List<ActionStep> steps)
     {
         var bet = Math.Min(Stakes.Bet(pot, RiverBetPercent), stack);
-        history.Add($"{StreetHeader("River", [river], pot)} Villain bets {Stakes.Bb(bet)} ({RiverBetPercent}%).");
+        history.Add($"{StreetHeader("River", [board[4]], pot)} Villain bets {Stakes.Bb(bet)} ({RiverBetPercent}%).");
         steps.Add(new ActionStep(Street.River, Position.BB, ActionKind.Bet, bet));
         return new Spot(Id, p.Hero, Position.BB, pot + bet, bet, stack, stack - bet, history, steps,
             FacingBetOptions(bet, stack));

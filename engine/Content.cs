@@ -19,6 +19,7 @@ public sealed record ContentSet(IReadOnlyList<PlayerType> Types, IReadOnlyList<R
 public static partial class ContentLoader
 {
     public const string IdentifyRulePrefix = "identify-";
+    public const string HandsRulePrefix = "hands-";
 
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -68,7 +69,7 @@ public static partial class ContentLoader
 
     /// <summary>Seats hero can open from in the postflop lines, and openers hero can face from the BB.</summary>
     private static readonly IReadOnlyList<Position> OpenSeats =
-        FlopVillainChecksLine.HeroSeats.Union(SrpToRiverLine.HeroSeats).ToList();
+        FlopVillainChecksLine.HeroSeats.Union(SrpLaterStreetLine.HeroSeats).ToList();
 
     private static readonly IReadOnlyList<Position> BigBlindCallSeats = FacingFlopCbetLine.VillainSeats;
 
@@ -164,6 +165,8 @@ public static partial class ContentLoader
             errors.Add("id is required and must be kebab-case (a-z, 0-9, '-')");
         else if (dto.Id.StartsWith(IdentifyRulePrefix, StringComparison.Ordinal))
             errors.Add($"id must not start with '{IdentifyRulePrefix}' (reserved for identification drills)");
+        else if (dto.Id.StartsWith(HandsRulePrefix, StringComparison.Ordinal))
+            errors.Add($"id must not start with '{HandsRulePrefix}' (reserved for hand drills)");
         else if (expectedId is not null && dto.Id != expectedId)
             errors.Add($"id '{dto.Id}' must match the file name '{expectedId}'");
 

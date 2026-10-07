@@ -7,6 +7,7 @@ namespace PokerDrills.Engine.Tests;
 public class LineTemplateTests
 {
     private static readonly Card[] Flop = Cards("Ks7d2c");
+    private static readonly Card[] Turn = Cards("Ks7d2c9h");
     private static readonly Card[] River = Cards("Ks7d2c9hTs");
 
     private static string Label(Spot spot, string id) => spot.Options.Single(o => o.Id == id).Label;
@@ -70,7 +71,7 @@ public class LineTemplateTests
     public void RiverVillainChecks_pot_arithmetic(StreetPlay flop, StreetPlay turn, double pot, double stack,
         string bet33, string bet75, string bet150)
     {
-        var spot = new RiverVillainChecksLine().Build(new SrpToRiverLine.Params(Position.BTN, flop, turn), River);
+        var spot = new RiverVillainChecksLine().Build(new SrpLaterStreetLine.Params(Position.BTN, flop, turn), River);
         Assert.Equal((decimal)pot, spot.Pot);
         Assert.Equal((decimal)stack, spot.HeroStack);
         Assert.Equal((decimal)stack, spot.VillainStack);
@@ -83,11 +84,48 @@ public class LineTemplateTests
         Assert.Equal(Invariant($"River [Ts] ({pot}bb): Villain checks."), spot.ActionHistory[3]);
     }
 
+    [Theory]
+    // flop play, turn pot, stacks behind, bet33 / bet75 labels
+    [InlineData(StreetPlay.CheckThrough, 5.5, 97.5, "1.8bb", "4.1bb")]
+    [InlineData(StreetPlay.Bet75Call, 13.7, 93.4, "4.5bb", "10.3bb")] // 5.5 + 2*4.1
+    public void TurnVillainChecks_pot_arithmetic(StreetPlay flop, double pot, double stack, string bet33, string bet75)
+    {
+        var spot = new TurnVillainChecksLine().Build(new SrpLaterStreetLine.Params(Position.CO, flop), Turn);
+        Assert.Equal((decimal)pot, spot.Pot);
+        Assert.Equal((decimal)stack, spot.HeroStack);
+        Assert.Equal((decimal)stack, spot.VillainStack);
+        Assert.Equal(0m, spot.ToCall);
+        Assert.Equal(["Check", "Bet33", "Bet75"], spot.Options.Select(o => o.Id));
+        Assert.Equal($"Bet 33% ({bet33})", Label(spot, "Bet33"));
+        Assert.Equal($"Bet 75% ({bet75})", Label(spot, "Bet75"));
+        Assert.Equal(3, spot.ActionHistory.Count);
+        Assert.Equal(Invariant($"Turn [9h] ({pot}bb): Villain checks."), spot.ActionHistory[2]);
+        Assert.Throws<ArgumentException>(() => new TurnVillainChecksLine().Build(
+            new SrpLaterStreetLine.Params(Position.CO, flop, StreetPlay.Bet33Call), Turn)); // no turn play before a turn decision
+    }
+
+    [Fact]
+    public void Later_street_spots_extend_the_earlier_ones()
+    {
+        // A hand drill shows these one after another: each spot must be the previous one plus what happened since.
+        var flop = new FlopVillainChecksLine().Build(new FlopVillainChecksLine.Params(Position.CO), Flop);
+        var turn = new TurnVillainChecksLine().Build(new SrpLaterStreetLine.Params(Position.CO, StreetPlay.Bet33Call), Turn);
+        var river = new FacingRiverBetLine().Build(
+            new SrpLaterStreetLine.Params(Position.CO, StreetPlay.Bet33Call, StreetPlay.CheckThrough), River);
+        foreach (var (earlier, later) in new[] { (flop, turn), (turn, river) })
+        {
+            Assert.Equal(earlier.Actions, later.Actions.Take(earlier.Actions.Count));
+            Assert.Equal(earlier.ActionHistory.SkipLast(1), later.ActionHistory.Take(earlier.ActionHistory.Count - 1));
+            Assert.StartsWith(earlier.ActionHistory[^1], later.ActionHistory[earlier.ActionHistory.Count - 1]);
+        }
+        Assert.Equal(flop.Pot + 2 * Stakes.Bet(flop.Pot, 33), turn.Pot);
+    }
+
     [Fact]
     public void RiverVillainChecks_history_shows_pot_before_each_street()
     {
         var spot = new RiverVillainChecksLine().Build(
-            new SrpToRiverLine.Params(Position.MP, StreetPlay.Bet75Call, StreetPlay.Bet33Call), River);
+            new SrpLaterStreetLine.Params(Position.MP, StreetPlay.Bet75Call, StreetPlay.Bet33Call), River);
         Assert.Equal("Flop [Ks 7d 2c] (5.5bb): Villain checks. Hero bets 4.1bb (75%). Villain calls.", spot.ActionHistory[1]);
         Assert.Equal("Turn [9h] (13.7bb): Villain checks. Hero bets 4.5bb (33%). Villain calls.", spot.ActionHistory[2]);
     }
@@ -97,7 +135,7 @@ public class LineTemplateTests
     [InlineData(StreetPlay.Bet75Call, StreetPlay.Bet75Call, 34.3, 25.7, 60.0, "Raise to 77.1bb")]
     public void FacingRiverBet_pot_arithmetic(StreetPlay flop, StreetPlay turn, double potBefore, double bet, double pot, string raise)
     {
-        var spot = new FacingRiverBetLine().Build(new SrpToRiverLine.Params(Position.UTG, flop, turn), River);
+        var spot = new FacingRiverBetLine().Build(new SrpLaterStreetLine.Params(Position.UTG, flop, turn), River);
         Assert.Equal((decimal)pot, spot.Pot);
         Assert.Equal((decimal)bet, spot.ToCall);
         Assert.Equal(spot.HeroStack - (decimal)bet, spot.VillainStack);
@@ -140,10 +178,11 @@ public class LineTemplateTests
         var rng = new Rng(9);
         var junk = Cards("9s3d");
         var aces = Cards("AsAd");
-        foreach (var line in new[] { LineId.SRP_HeroIP_FlopVillainChecks, LineId.SRP_HeroIP_RiverVillainChecks, LineId.SRP_HeroIP_FacingRiverBet })
+        foreach (var line in new[] { LineId.SRP_HeroIP_FlopVillainChecks, LineId.SRP_HeroIP_TurnVillainChecks,
+                     LineId.SRP_HeroIP_RiverVillainChecks, LineId.SRP_HeroIP_FacingRiverBet })
         {
             var template = LineTemplate.For(line);
-            var board = template.BoardCardCount == 3 ? Flop : River;
+            var board = BoardFor(template);
             for (var i = 0; i < 100; i++)
             {
                 Assert.Null(template.TryBuild(rng, junk, board, ranges));
@@ -307,7 +346,7 @@ public class LineTemplateTests
         Assert.Equal(1 - 0.02 - 0.23, foldVsRaise, 6);
     }
 
-    private static Card[] BoardFor(LineTemplate t) => t.BoardCardCount switch { 0 => [], 3 => Flop, _ => River };
+    private static Card[] BoardFor(LineTemplate t) => t.BoardCardCount switch { 0 => [], 3 => Flop, 4 => Turn, _ => River };
 
     private static Dictionary<Position, StatLine> Everyone(Spot spot, StatLine stats) =>
         Enum.GetValues<Position>().Where(p => p != spot.HeroPosition && p != spot.VillainPosition).ToDictionary(p => p, _ => stats);
@@ -435,6 +474,18 @@ public class LineTemplateTests
             () => throw new InvalidOperationException("villain is never asked to call when hero checks"))!;
         Assert.Equal(5.5m, checks.Pot);
         Assert.Equal([3, 4], cardsSeen); // the policy only sees the cards dealt so far
+
+        // A turn spot only plays the flop first.
+        var streets = new List<Street>();
+        var turn = new TurnVillainChecksLine().FollowRules(Position.CO, Turn,
+            (street, _) =>
+            {
+                streets.Add(street);
+                return StreetPlay.Bet75Call;
+            },
+            () => true)!;
+        Assert.Equal([Street.Flop], streets);
+        Assert.Equal(13.7m, turn.Pot);
     }
 
     [Fact]

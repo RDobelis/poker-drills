@@ -1,5 +1,6 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace PokerDrills.Engine;
 
@@ -7,6 +8,9 @@ public static class DrillKinds
 {
     public const string Action = "action";
     public const string Identify = "identify";
+
+    /// <summary>Several decisions in one hand; the decisions are in <see cref="Drill.Steps"/>.</summary>
+    public const string Hand = "hand";
 }
 
 public sealed record Stacks(double Hero, double Villain);
@@ -56,6 +60,33 @@ public sealed record Drill
     public required string Correct { get; init; }
     public required string Reason { get; init; }
     public DrillFacts? Facts { get; init; }
+
+    /// <summary>
+    /// Hand drills only: each decision in order. Shared things (players, villain, hero's cards, the full board) are on
+    /// the drill; the decision fields above are empty.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<HandStep>? Steps { get; init; }
+}
+
+/// <summary>One decision of a hand drill: the spot as hero sees it on that street and the rule that grades it.</summary>
+public sealed record HandStep
+{
+    public required string RuleId { get; init; }
+    public required string Line { get; init; }
+    public required double Pot { get; init; }
+    public required double ToCall { get; init; }
+    public required Stacks Stacks { get; init; }
+    public required IReadOnlyList<string> ActionHistory { get; init; }
+    public required IReadOnlyList<DrillAction> Actions { get; init; }
+
+    /// <summary>The board cards visible at this decision.</summary>
+    public required IReadOnlyList<string> Board { get; init; }
+    public required string Question { get; init; }
+    public required IReadOnlyList<DrillOption> Options { get; init; }
+    public required string Correct { get; init; }
+    public required string Reason { get; init; }
+    public required DrillFacts Facts { get; init; }
 }
 
 public sealed record RuleSummary(

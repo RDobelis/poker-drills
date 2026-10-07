@@ -56,6 +56,7 @@ export function buildFlagExport(flags: Flags, drillsById: ReadonlyMap<string, Dr
               options: d.options,
               correct: d.correct,
               facts: d.facts,
+              steps: d.steps, // hand drills: every decision
             }
           : null, // drill no longer in drills.json (regenerated)
       };

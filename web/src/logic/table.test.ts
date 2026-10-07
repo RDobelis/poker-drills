@@ -1,12 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { DrillFile } from '../types';
+import { decisionsOf } from './hand';
 import { SEATS, buildFrames, decisionStreet, describeFrame, slotOf, tableAt, toCallFor, totalPot, type Seat } from './table';
 
-// Replays every action drill in the generated drills.json: the table the student sees must end exactly
-// at the pot, stacks and amount to call the C# generator computed.
+// Replays every action drill in the generated drills.json, and every decision of every hand: the table the student
+// sees must end exactly at the pot, stacks and amount to call the C# generator computed.
 const file = JSON.parse(readFileSync(new URL('../../public/drills.json', import.meta.url), 'utf8')) as DrillFile;
-const actionDrills = file.drills.filter((d) => d.kind === 'action');
+const hands = file.drills.filter((d) => d.kind === 'hand');
+const actionDrills = [...file.drills.filter((d) => d.kind === 'action'), ...hands.flatMap(decisionsOf)];
 const typeName = (id: string) => file.types.find((t) => t.id === id)?.name ?? id;
 
 describe('table replay of the generated drills', () => {
@@ -114,6 +116,29 @@ describe('table replay of the generated drills', () => {
       expect(d.others, d.id).toEqual(['SB']);
       const end = tableAt(d, buildFrames(d).at(-1)!);
       expect(end.seats.SB.folded || end.seats.BB.folded, d.id).toBe(false);
+    }
+  });
+
+  it('plays a hand on from one decision to the next along the correct answer', () => {
+    expect(hands.length).toBeGreaterThan(100);
+    for (const h of hands) {
+      const decisions = decisionsOf(h);
+      expect(decisions.length, h.id).toBeGreaterThanOrEqual(2);
+      expect(decisions.at(-1)!.board, h.id).toEqual(h.board);
+      for (let i = 1; i < decisions.length; i++) {
+        const prev = decisions[i - 1];
+        const cur = decisions[i];
+        expect(cur.actions.slice(0, prev.actions.length), cur.id).toEqual(prev.actions);
+        expect(cur.board.slice(0, prev.board.length), cur.id).toEqual(prev.board);
+        const heroNext = cur.actions[prev.actions.length];
+        expect(heroNext.seat).toBe(h.heroPosition);
+        expect(heroNext.kind, cur.id).toBe(prev.correct === 'Check' ? 'Check' : 'Bet');
+        // The table picks the replay up at the previous decision.
+        const frames = buildFrames(cur);
+        const start = frames.findIndex((f) => f.applied >= prev.actions.length);
+        expect(totalPot(tableAt(cur, frames[start])), cur.id).toBeCloseTo(prev.pot!, 6);
+        expect(tableAt(cur, frames[start]).street, cur.id).toBe(decisionStreet(prev));
+      }
     }
   });
 

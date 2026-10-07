@@ -61,7 +61,7 @@ export function Trainer({ data }: { data: DrillFile }) {
         drills={sessionDrills}
         answers={session.answers}
         typeName={typeName}
-        onAnswer={(drill, optionId) => setState((s) => recordAnswer(s, drill, optionId, todayKey()))}
+        onAnswer={(drill, optionId, step) => setState((s) => recordAnswer(s, drill, optionId, todayKey(), step))}
         onFinish={() => {
           setState((s) => completeSession(s));
           go('summary');

@@ -1,0 +1,12 @@
+{
+  "id": "station-turn-no-bluff",
+  "placeholder": true,
+  "villainType": "CallingStation",
+  "line": "SRP_HeroIP_TurnVillainChecks",
+  "hero": { "minStrength": "Air", "maxStrength": "Air" },
+  "draws": "none",
+  "boardRequire": [],
+  "boardExclude": [],
+  "correct": "Check",
+  "reason": "A station won't fold the turn either. With no pair and no draw, check back and see the river for free."
+}

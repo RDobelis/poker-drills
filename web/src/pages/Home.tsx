@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { DrillFile } from '../types';
 import type { DateKey } from '../logic/dates';
+import { isDone } from '../logic/hand';
 import { isDue } from '../logic/leitner';
 import { visibleStreak, type ActiveSession, type AppState } from '../logic/state';
 
@@ -28,9 +29,15 @@ export function Home({ data, state, today, sessionToday, saveFailed, onStart, on
     return { due: dueCount, fresh: freshCount };
   }, [data, state.progress, today]);
 
-  const answered = sessionToday?.answers.length ?? 0;
+  const drillById = useMemo(() => new Map(data.drills.map((d) => [d.id, d])), [data]);
+  const answers = sessionToday?.answers ?? [];
+  // A hand counts as done only once all its decisions are answered; the score counts decisions.
+  const done = (sessionToday?.drillIds ?? []).filter((id) => {
+    const d = drillById.get(id);
+    return d !== undefined && isDone(d, answers);
+  }).length;
   const total = sessionToday?.drillIds.length ?? 0;
-  const score = sessionToday?.answers.filter((a) => a.correct).length ?? 0;
+  const score = answers.filter((a) => a.correct).length;
 
   return (
     <main className="app">
@@ -50,7 +57,7 @@ export function Home({ data, state, today, sessionToday, saveFailed, onStart, on
       {sessionToday?.completed && (
         <section className="card done">
           <p>
-            <b>Last session:</b> {score}/{total} correct. Today's streak is secured.
+            <b>Last session:</b> {score}/{answers.length} correct. Today's streak is secured.
           </p>
           <button type="button" className="btn" onClick={onShowSummary}>
             See summary
@@ -62,7 +69,7 @@ export function Home({ data, state, today, sessionToday, saveFailed, onStart, on
           ? "Start today's session"
           : sessionToday.completed
             ? 'Start another session'
-            : `Resume session (${answered}/${total})`}
+            : `Resume session (${done}/${total})`}
       </button>
       <p className="small muted center">
         {due} due for review · {fresh} new drills

@@ -1,0 +1,12 @@
+{
+  "id": "overfolder-turn-barrel",
+  "placeholder": true,
+  "villainType": "Overfolder",
+  "line": "SRP_HeroIP_TurnVillainChecks",
+  "hero": { "minStrength": "Air", "maxStrength": "Air" },
+  "draws": null,
+  "boardRequire": [],
+  "boardExclude": [],
+  "correct": "Bet75",
+  "reason": "Overfolders call a flop bet light, then give up on the turn far too often. Fire again with air."
+}

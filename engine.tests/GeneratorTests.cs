@@ -4,7 +4,7 @@ namespace PokerDrills.Engine.Tests;
 
 public class GeneratorTests
 {
-    private static readonly GeneratorOptions Small = new() { Seed = 42, PerRule = 60, MaxAttempts = 50_000 };
+    private static readonly GeneratorOptions Small = new() { Seed = 42, PerRule = 60, MaxAttempts = 50_000, HandsPerRule = 15 };
 
     // Full-size run shared by the tests that check the real deliverable.
     private static readonly Lazy<GenerationResult> FullRun =
@@ -217,20 +217,24 @@ public class GeneratorTests
     }
 
     [Fact]
-    public void Earlier_streets_of_river_spots_follow_the_rules()
+    public void Earlier_streets_of_turn_and_river_spots_follow_the_rules()
     {
         var content = TestHelpers.Content;
-        var rivers = FullRun.Value.File.Drills.Where(d => d.Kind == DrillKinds.Action && d.Board.Count == 5).ToList();
-        Assert.NotEmpty(rivers);
-        foreach (var d in rivers)
+        var later = FullRun.Value.File.Drills
+            .Where(d => d.Kind == DrillKinds.Action && LineTemplate.For(Enum.Parse<LineId>(d.Line)) is SrpLaterStreetLine)
+            .ToList();
+        Assert.Contains(later, d => d.Board.Count == 4);
+        Assert.Contains(later, d => d.Board.Count == 5);
+        foreach (var d in later)
         {
+            var template = (SrpLaterStreetLine)LineTemplate.For(Enum.Parse<LineId>(d.Line));
             var hole = d.HeroCards.Select(Card.Parse).ToArray();
             var board = d.Board.Select(Card.Parse).ToArray();
             var pot = Stakes.SrpPot;
-            foreach (var street in new[] { Street.Flop, Street.Turn })
+            foreach (var street in template.EarlierStreets)
             {
-                var seen = board.Take(street == Street.Flop ? 3 : 4).ToList();
-                var (expected, _) = DrillGenerator.HeroPlay(street, hole, seen, d.VillainType, content.Rules, ClassifierOptions.Default);
+                var seen = board.Take(LineTemplate.BoardCountAt(street)).ToList();
+                var expected = DrillGenerator.HeroPlay(street, hole, seen, d.VillainType, content.Rules, ClassifierOptions.Default).Play;
                 var heroAction = d.Actions.Single(a => a.Seat == d.HeroPosition && a.Street == street.ToString());
                 if (expected == StreetPlay.CheckThrough)
                 {
@@ -243,7 +247,7 @@ public class GeneratorTests
                 Assert.Contains(d.Actions, a => a.Seat == d.VillainPosition && a.Street == street.ToString() && a.Kind == "Call");
                 pot += 2 * bet;
             }
-            Assert.Equal(2, d.Facts!.Path.Count);
+            Assert.Equal(template.EarlierStreets.Count, d.Facts!.Path.Count);
         }
     }
 
@@ -254,13 +258,98 @@ public class GeneratorTests
         var air = Card.ParseMany("9c4s");
         var dryFlop = Card.ParseMany("Ks7d2h");
         var options = ClassifierOptions.Default;
-        Assert.Equal((StreetPlay.Bet33Call, "rule overfolder-flop-stab"), DrillGenerator.HeroPlay(Street.Flop, air, dryFlop, "Overfolder", rules, options));
-        Assert.Equal((StreetPlay.CheckThrough, "rule station-flop-no-stab"), DrillGenerator.HeroPlay(Street.Flop, air, dryFlop, "CallingStation", rules, options));
-        Assert.Equal(StreetPlay.CheckThrough, DrillGenerator.HeroPlay(Street.Flop, air, dryFlop, "Nit", rules, options).Play); // default checks air
-        Assert.Equal(StreetPlay.Bet33Call, DrillGenerator.HeroPlay(Street.Flop, Card.ParseMany("Ah5h"), Card.ParseMany("Kh9h2c"), "Nit", rules, options).Play); // flush draw
-        Assert.Equal(StreetPlay.Bet75Call, DrillGenerator.HeroPlay(Street.Turn, Card.ParseMany("AsKd"), Card.ParseMany("Kc7h2s9d"), "Nit", rules, options).Play); // TPGK
-        // No rules cover the turn yet: even against an overfolder the default decides there.
-        Assert.StartsWith("default", DrillGenerator.HeroPlay(Street.Turn, air, Card.ParseMany("Ks7d2h3c"), "Overfolder", rules, options).Why);
+        StreetDecision Play(Street street, IReadOnlyList<Card> hole, IReadOnlyList<Card> board, string type) =>
+            DrillGenerator.HeroPlay(street, hole, board, type, rules, options);
+
+        var stab = Play(Street.Flop, air, dryFlop, "Overfolder");
+        Assert.Equal((StreetPlay.Bet33Call, "overfolder-flop-stab"), (stab.Play, stab.Rule?.Id));
+        Assert.Equal("Flop: bet 33%, called (rule overfolder-flop-stab)", DrillGenerator.Describe(stab));
+        var station = Play(Street.Flop, air, dryFlop, "CallingStation");
+        Assert.Equal((StreetPlay.CheckThrough, "station-flop-no-stab"), (station.Play, station.Rule?.Id));
+
+        var nit = Play(Street.Flop, air, dryFlop, "Nit");
+        Assert.Equal(StreetPlay.CheckThrough, nit.Play); // the default checks air
+        Assert.Null(nit.Rule);
+        Assert.Equal("Flop: check (default for Air)", DrillGenerator.Describe(nit));
+        Assert.Equal(StreetPlay.Bet33Call, Play(Street.Flop, Card.ParseMany("Ah5h"), Card.ParseMany("Kh9h2c"), "Nit").Play); // flush draw
+        Assert.Equal(StreetPlay.Bet75Call, Play(Street.Turn, Card.ParseMany("AsKd"), Card.ParseMany("Kc7h2s9d"), "Nit").Play); // TPGK
+
+        // Turn rules decide the turn: an overfolder gets barrelled with air.
+        var barrel = Play(Street.Turn, air, Card.ParseMany("Ks7d2h3c"), "Overfolder");
+        Assert.Equal((StreetPlay.Bet75Call, "overfolder-turn-barrel"), (barrel.Play, barrel.Rule?.Id));
+    }
+
+    [Fact]
+    public void Hands_end_at_turn_and_river_rules_whose_type_has_rules_for_earlier_streets()
+    {
+        var rules = TestHelpers.Content.Rules;
+        Assert.Equal(["station-river-no-bluff", "station-river-value", "station-turn-no-bluff", "station-turn-value"],
+            DrillGenerator.HandAnchors("CallingStation", rules).Select(r => r.Id));
+        Assert.Equal(["overfolder-turn-barrel"], DrillGenerator.HandAnchors("Overfolder", rules).Select(r => r.Id));
+        Assert.Empty(DrillGenerator.HandAnchors("Nit", rules)); // a river rule, but nothing for the flop or turn
+        Assert.Empty(DrillGenerator.HandAnchors("Maniac", rules)); // its flop rule is out of position (facing a c-bet)
+
+        var result = FullRun.Value;
+        Assert.Equal(["hands-calling-station", "hands-overfolder"],
+            result.File.Rules.Where(r => r.Kind == DrillKinds.Hand).Select(r => r.Id));
+        foreach (var report in result.Reports.Where(r => r.Kind == DrillKinds.Hand))
+        {
+            Assert.Equal(DrillGenerator.HandAnchors(report.RuleId == "hands-overfolder" ? "Overfolder" : "CallingStation", rules).Count * 50,
+                report.Produced);
+            Assert.Empty(report.Warnings);
+        }
+    }
+
+    [Fact]
+    public void Hands_ask_every_rule_decided_street_and_go_on_along_the_correct_line()
+    {
+        var content = TestHelpers.Content;
+        var rules = content.Rules.ToDictionary(r => r.Id);
+        var hands = FullRun.Value.File.Drills.Where(d => d.Kind == DrillKinds.Hand).ToList();
+        Assert.NotEmpty(hands);
+        foreach (var h in hands)
+        {
+            var steps = h.Steps!;
+            var hole = h.HeroCards.Select(Card.Parse).ToArray();
+            var fullBoard = h.Board.Select(Card.Parse).ToArray();
+            Assert.True(steps.Count >= 2, h.Id);
+            Assert.Equal(h.Board, steps[^1].Board);
+            Assert.Contains(rules[steps[^1].RuleId], DrillGenerator.HandAnchors(h.VillainType, content.Rules));
+            Assert.Equal(5, h.Players.Count);
+            Assert.Equal(h.VillainStats, h.Players.Single(p => p.Seat == h.VillainPosition).Stats);
+
+            for (var i = 0; i < steps.Count; i++)
+            {
+                var s = steps[i];
+                var rule = rules[s.RuleId];
+                var line = Enum.Parse<LineId>(s.Line);
+                Assert.Equal(rule.Line, line);
+                Assert.Equal(h.VillainType, rule.VillainType);
+                Assert.Equal((rule.Correct, rule.Reason), (s.Correct, s.Reason));
+                Assert.Equal(LineTemplate.For(line).OptionIds, s.Options.Select(o => o.Id));
+                Assert.Equal(h.Board.Take(LineTemplate.For(line).BoardCardCount), s.Board);
+                var facts = SpotFacts.Analyze(hole, s.Board.Select(Card.Parse).ToArray(), ClassifierOptions.Default);
+                Assert.True(RuleMatcher.Matches(rule, h.VillainType, line, facts, Seating.Empty), $"{h.Id} step {i + 1} vs {rule.Id}");
+                Assert.Equal(200.5, s.Stacks.Hero + s.Stacks.Villain + s.Pot, 6); // heads-up plus the dead small blind
+
+                if (i == 0) continue;
+                // The hand goes on from the previous decision, along that decision's correct answer.
+                var prev = steps[i - 1];
+                Assert.True(prev.Board.Count < s.Board.Count);
+                Assert.Equal(prev.Actions, s.Actions.Take(prev.Actions.Count));
+                var heroNext = s.Actions[prev.Actions.Count];
+                Assert.Equal(h.HeroPosition, heroNext.Seat);
+                Assert.Equal(prev.Correct == "Check" ? "Check" : "Bet", heroNext.Kind);
+            }
+
+            // The earlier decisions are exactly the streets where a rule decides hero's play.
+            var last = (SrpLaterStreetLine)LineTemplate.For(Enum.Parse<LineId>(steps[^1].Line));
+            var ruled = last.EarlierStreets
+                .Select(street => DrillGenerator.HeroPlay(street, hole, fullBoard.Take(LineTemplate.BoardCountAt(street)).ToList(),
+                    h.VillainType, content.Rules, ClassifierOptions.Default).Rule?.Id)
+                .OfType<string>();
+            Assert.Equal(ruled, steps.SkipLast(1).Select(s => s.RuleId));
+        }
     }
 
     [Fact]

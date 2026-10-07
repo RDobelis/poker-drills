@@ -1,0 +1,12 @@
+{
+  "id": "station-turn-value",
+  "placeholder": true,
+  "villainType": "CallingStation",
+  "line": "SRP_HeroIP_TurnVillainChecks",
+  "hero": { "minStrength": "TopPairGoodKicker", "maxStrength": "FullHousePlus" },
+  "draws": null,
+  "boardRequire": [],
+  "boardExclude": ["FourToFlush", "FourToStraight"],
+  "correct": "Bet75",
+  "reason": "Stations call the turn with any pair. Keep betting big with top pair good kicker or better."
+}

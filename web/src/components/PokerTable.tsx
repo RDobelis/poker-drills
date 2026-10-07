@@ -20,6 +20,8 @@ interface Props {
   typeName: TypeNamer;
   /** Replay the hand from the blinds when the drill opens. */
   autoPlay: boolean;
+  /** Start that replay after this many actions (the next decision of a hand picks up where the last one was). */
+  replayFrom?: number;
   /** The decision is made: show the final state. */
   answered: boolean;
   /** Seat whose HUD is shown; tapping another seat selects it. */
@@ -40,11 +42,11 @@ function frameDelay(drill: Drill, frames: Frame[], i: number): number {
 }
 
 /** 6-max table, hero at the bottom; replays the action before hero's decision. */
-export function PokerTable({ drill, typeName, autoPlay, answered, selectedSeat = null, onSelectSeat }: Props) {
+export function PokerTable({ drill, typeName, autoPlay, replayFrom = 0, answered, selectedSeat = null, onSelectSeat }: Props) {
   const frames = useMemo(() => buildFrames(drill), [drill]);
   const last = frames.length - 1;
   const [animate] = useState(() => autoPlay && !answered && !prefersReducedMotion());
-  const [index, setIndex] = useState(animate ? 0 : last);
+  const [index, setIndex] = useState(() => (animate ? Math.max(0, frames.findIndex((f) => f.applied >= replayFrom)) : last));
   const [playing, setPlaying] = useState(animate);
 
   // Answering ends the replay.

@@ -11,10 +11,12 @@ interface Props {
   chosen?: string;
   /** Coach review: everything revealed, correct option marked, classifier facts shown. */
   review?: boolean;
+  /** Table replay starts after this many actions (later decisions of a hand). */
+  replayFrom?: number;
   onChoose?: (optionId: string) => void;
 }
 
-export function DrillView({ drill, typeName, chosen, review = false, onChoose }: Props) {
+export function DrillView({ drill, typeName, chosen, review = false, replayFrom, onChoose }: Props) {
   const revealed = review || chosen !== undefined;
   const isIdentify = drill.kind === 'identify';
   const showType = !isIdentify || revealed; // the type IS the question on identify drills
@@ -50,6 +52,7 @@ export function DrillView({ drill, typeName, chosen, review = false, onChoose }:
           drill={drill}
           typeName={typeName}
           autoPlay={!review}
+          replayFrom={replayFrom}
           answered={revealed}
           selectedSeat={hudSeat}
           onSelectSeat={setHudSeat}

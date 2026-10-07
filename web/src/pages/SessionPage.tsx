@@ -1,27 +1,38 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Drill } from '../types';
 import type { Answer } from '../logic/state';
+import { answersFor, decisionsOf, isDone } from '../logic/hand';
+import { decisionStreet } from '../logic/table';
 import { DrillView } from '../components/DrillView';
 
 interface Props {
   drills: Drill[];
   answers: Answer[];
   typeName: (typeId: string) => string;
-  onAnswer: (drill: Drill, optionId: string) => void;
+  /** `step` is the decision within a hand (always 0 for other drills). */
+  onAnswer: (drill: Drill, optionId: string, step: number) => void;
   onFinish: () => void;
   onExit: () => void;
 }
 
 export function SessionPage({ drills, answers, typeName, onAnswer, onFinish, onExit }: Props) {
-  // Resume at the first unanswered drill (after a reload, for example).
+  // Resume at the first drill not fully answered (after a reload, for example)...
   const [index, setIndex] = useState(() => {
-    const i = drills.findIndex((d) => !answers.some((a) => a.drillId === d.id));
+    const i = drills.findIndex((d) => !isDone(d, answers));
     return i === -1 ? drills.length - 1 : i;
   });
   const drill = drills[index];
-  const answer = answers.find((a) => a.drillId === drill.id);
+  const decisions = useMemo(() => decisionsOf(drill), [drill]);
+  const given = answersFor(drill, answers);
+  // ...and, in a hand, at its first unanswered decision.
+  const [step, setStep] = useState(() => Math.min(given.length, decisions.length - 1));
+
+  const decision = decisions[step];
+  const answer = given[step];
+  const isLastStep = step === decisions.length - 1;
   const isLast = index === drills.length - 1;
-  const correctLabel = drill.options.find((o) => o.id === drill.correct)?.label ?? drill.correct;
+  const correctLabel = decision.options.find((o) => o.id === decision.correct)?.label ?? decision.correct;
+  const doneCount = drills.filter((d) => isDone(d, answers)).length;
 
   const feedbackRef = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -30,13 +41,23 @@ export function SessionPage({ drills, answers, typeName, onAnswer, onFinish, onE
   }, [answer]);
 
   const next = () => {
-    if (isLast) {
+    if (!isLastStep) {
+      setStep(step + 1);
+    } else if (isLast) {
       onFinish();
       return;
+    } else {
+      setIndex(index + 1);
+      setStep(0);
     }
-    setIndex(index + 1);
     window.scrollTo(0, 0);
   };
+
+  const nextLabel = !isLastStep
+    ? `Continue to the ${decisionStreet(decisions[step + 1]).toLowerCase()}`
+    : isLast
+      ? 'See results'
+      : 'Next';
 
   return (
     <main className="app">
@@ -46,7 +67,7 @@ export function SessionPage({ drills, answers, typeName, onAnswer, onFinish, onE
         </button>
         <div className="progress">
           <div className="progress-bar" aria-hidden="true">
-            <span style={{ width: `${(answers.length / drills.length) * 100}%` }} />
+            <span style={{ width: `${(doneCount / drills.length) * 100}%` }} />
           </div>
           <span className="small muted">
             {index + 1} / {drills.length}
@@ -54,12 +75,15 @@ export function SessionPage({ drills, answers, typeName, onAnswer, onFinish, onE
         </div>
       </header>
 
+      {drill.kind === 'hand' && <HandSteps decisions={decisions} given={given} step={step} />}
+
       <DrillView
-        key={drill.id}
-        drill={drill}
+        key={decision.id}
+        drill={decision}
         typeName={typeName}
         chosen={answer?.chosen}
-        onChoose={(optionId) => onAnswer(drill, optionId)}
+        replayFrom={step > 0 ? decisions[step - 1].actions.length : 0}
+        onChoose={(optionId) => onAnswer(drill, optionId, step)}
       />
 
       {answer && (
@@ -70,12 +94,34 @@ export function SessionPage({ drills, answers, typeName, onAnswer, onFinish, onE
               Correct action: <b>{correctLabel}</b>
             </p>
           )}
-          <p className="reason">{drill.reason}</p>
+          <p className="reason">{decision.reason}</p>
+          {!answer.correct && !isLastStep && <p className="small muted">The hand goes on with the correct play.</p>}
           <button type="button" className="btn btn-primary" onClick={next}>
-            {isLast ? 'See results' : 'Next'}
+            {nextLabel}
           </button>
         </section>
       )}
     </main>
+  );
+}
+
+/** "Whole hand: Flop ✓ · Turn · River": where the student is in a hand and how the earlier decisions went. */
+function HandSteps({ decisions, given, step }: { decisions: Drill[]; given: Answer[]; step: number }) {
+  return (
+    <div className="hand-steps">
+      <span className="muted">Whole hand</span>
+      <ol aria-label="Decisions in this hand">
+        {decisions.map((d, i) => {
+          const a = given[i];
+          const state = a ? (a.correct ? 'ok' : 'bad') : i === step ? 'current' : 'todo';
+          return (
+            <li key={d.id} className={`hand-step ${state}`} aria-current={i === step ? 'step' : undefined}>
+              {decisionStreet(d)}
+              {a && <span aria-label={a.correct ? 'right' : 'wrong'}>{a.correct ? ' ✓' : ' ✗'}</span>}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
   );
 }
