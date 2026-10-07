@@ -1,0 +1,13 @@
+{
+  "id": "reg-turn-value",
+  "placeholder": true,
+  "villainType": "Reg",
+  "line": "SRP_HeroIP_TurnVillainChecks",
+  "hero": { "minStrength": "TopPairGoodKicker", "maxStrength": "FullHousePlus" },
+  "draws": null,
+  "boardRequire": [],
+  "boardExclude": [],
+  "earlier": { "flop": "bet" },
+  "correct": "Bet75",
+  "reason": "The reg called your flop bet and checked again. With top pair good kicker or better, keep betting for value: worse pairs and draws still call."
+}

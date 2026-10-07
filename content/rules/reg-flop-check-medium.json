@@ -1,0 +1,12 @@
+{
+  "id": "reg-flop-check-medium",
+  "placeholder": true,
+  "villainType": "Reg",
+  "line": "SRP_HeroIP_FlopVillainChecks",
+  "hero": { "minStrength": "SecondPair", "maxStrength": "TopPairWeakKicker" },
+  "draws": null,
+  "boardRequire": [],
+  "boardExclude": [],
+  "correct": "Check",
+  "reason": "A reg calls a flop bet with better pairs and good draws and folds the hands you beat. With second pair or a weak top pair, check back and keep the pot small."
+}

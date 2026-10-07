@@ -23,7 +23,7 @@ Kept out of the prototype on purpose. Each one is a candidate for after the 20-s
 - Suit-isomorphic dedupe (AsKs ≈ AhKh) for more distinct drills per rule.
 
 ## Data / tech
-- Split `drills.json` per rule or trim it (hand steps repeat their action lists); it is ~13 MB uncompressed today
-  (about 0.7 MB with gzip).
+- Split `drills.json` per rule or trim it (hand steps repeat their action lists); it is ~15 MB uncompressed today
+  (about 0.8 MB with gzip).
 - Progress export/import (a JSON file) so students can move devices without a backend.
 - Optional backend for class leaderboards and coach dashboards (out of scope for this prototype).

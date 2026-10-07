@@ -1,0 +1,12 @@
+{
+  "id": "reg-flop-value",
+  "placeholder": true,
+  "villainType": "Reg",
+  "line": "SRP_HeroIP_FlopVillainChecks",
+  "hero": { "minStrength": "TopPairGoodKicker", "maxStrength": "FullHousePlus" },
+  "draws": null,
+  "boardRequire": [],
+  "boardExclude": [],
+  "correct": "Bet75",
+  "reason": "A reg checks plenty of decent hands to you and calls a bet with them. With top pair good kicker or better, bet big for value."
+}

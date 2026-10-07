@@ -88,6 +88,10 @@ overfolder-3way-dry-stab            action       200     17100          0  -
 overfolder-flop-stab                action       200      5710          0  -
 overfolder-turn-barrel              action       200     14595          0  -
 overfolder-turn-stab                action       200      2201          0  -
+reg-flop-check-medium               action       200      4033          0  -
+reg-flop-value                      action       200      3714          0  -
+reg-river-check-medium              action       200      6922          0  -
+reg-turn-value                      action       200      6364          0  -
 station-3way-no-stab                action       200      1058          0  -
 station-flop-no-stab                action       200      1657          0  -
 station-iso-big                     action       200      6589          0  -
@@ -107,7 +111,8 @@ hands-nit                           hand         100      6383          -  -
 hands-calling-station               hand         200     11158          -  -
 hands-maniac                        hand         100      2188          -  -
 hands-overfolder                    hand          50      6237          -  -
-Wrote 6150 drills ... Conflicts: 0. Warnings: 0.
+hands-reg                           hand         100      4226          -  -
+Wrote 7050 drills ... Conflicts: 0. Warnings: 0.
 ```
 
 Turn and river rules need more attempts than flop rules because a deal is dropped when villain would have folded
@@ -123,7 +128,7 @@ conflict checker re-analyses every generated drill from its cards against every 
 line; a match with a different `correct` answer is a conflict: both rule ids and an example are printed,
 the process exits with code 1 and `drills.json` is not written.
 
-The 26 placeholder rules produce **0 conflicts**. Beyond the brief's exclusions (`station-river-value` already
+The 30 placeholder rules produce **0 conflicts**. Beyond the brief's exclusions (`station-river-value` already
 excludes `FourToFlush` and `FourToStraight`), `station-iso-playable` excludes a maniac behind so it doesn't clash
 with `station-iso-playable-maniac-behind`. Every decision of every hand drill is checked the same way. Rules for different villain
 types (for example `overfolder-flop-stab` and `station-flop-no-stab`) never conflict because the villain
@@ -203,9 +208,11 @@ Full definitions are in [PLAN.md](PLAN.md). The interpretation calls:
   - station: flop no-stab → turn value/no-bluff → river value/no-bluff;
   - overfolder: flop stab → turn barrel;
   - nit: flop stab → turn give-up, or flop check with a medium pair → fold one pair to the river bet;
-  - maniac: flop check (no bluff, or a medium pair) → turn check to induce → call the river bluff.
+  - maniac: flop check (no bluff, or a medium pair) → turn check to induce → call the river bluff;
+  - reg (no big leak, so standard play): flop value bet → turn value bet, or flop check with a medium pair →
+    check back the river for a free showdown.
 
-  The reg has no rules, so no hands. Hands are listed per villain type as `hands-<type>`.
+  Hands are listed per villain type as `hands-<type>`.
 - **Preflop realism**: in the postflop lines hero's hand must fit the action. The generator draws the seat
   first and rejects the deal if hero wouldn't open that hand from that seat (or wouldn't flat it in the BB
   against that opener), per `content/ranges.json`. So 93o is never opened UTG, and weak hands mostly appear

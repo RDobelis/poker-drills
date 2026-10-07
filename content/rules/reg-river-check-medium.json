@@ -1,0 +1,12 @@
+{
+  "id": "reg-river-check-medium",
+  "placeholder": true,
+  "villainType": "Reg",
+  "line": "SRP_HeroIP_RiverVillainChecks",
+  "hero": { "minStrength": "SecondPair", "maxStrength": "TopPairWeakKicker" },
+  "draws": null,
+  "boardRequire": [],
+  "boardExclude": [],
+  "correct": "Check",
+  "reason": "A reg who checks the river calls a bet mostly with hands that beat yours. Check back second pair or a weak top pair and take the free showdown."
+}

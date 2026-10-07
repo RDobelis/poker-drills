@@ -275,13 +275,16 @@ public class GeneratorTests
         var nit = Play(Street.Flop, air, dryFlop, "Nit");
         Assert.Equal((StreetPlay.Bet33Call, "nit-flop-stab"), (nit.Play, nit.Rule?.Id));
 
-        // The reg has no rules: the default decides.
-        var reg = Play(Street.Flop, air, dryFlop, "Reg");
-        Assert.Equal(StreetPlay.CheckThrough, reg.Play); // the default checks air
-        Assert.Null(reg.Rule);
-        Assert.Equal("Flop: check (default for Air)", DrillGenerator.Describe(reg));
-        Assert.Equal(StreetPlay.Bet33Call, Play(Street.Flop, Card.ParseMany("Ah5h"), Card.ParseMany("Kh9h2c"), "Reg").Play); // flush draw
-        Assert.Equal(StreetPlay.Bet75Call, Play(Street.Turn, Card.ParseMany("AsKd"), Card.ParseMany("Kc7h2s9d"), "Reg").Play); // TPGK
+        // With no rule for the spot, the default decides.
+        StreetDecision Default(Street street, IReadOnlyList<Card> hole, IReadOnlyList<Card> board) =>
+            DrillGenerator.HeroPlay(street, hole, board, "Reg", [], options);
+        var none = Default(Street.Flop, air, dryFlop);
+        Assert.Equal(StreetPlay.CheckThrough, none.Play); // the default checks air
+        Assert.Null(none.Rule);
+        Assert.Equal("Flop: check (default for Air)", DrillGenerator.Describe(none));
+        Assert.Equal(StreetPlay.Bet33Call, Default(Street.Flop, Card.ParseMany("Ah5h"), Card.ParseMany("Kh9h2c")).Play); // flush draw
+        Assert.Equal(StreetPlay.Bet75Call, Default(Street.Turn, Card.ParseMany("AsKd"), Card.ParseMany("Kc7h2s9d")).Play); // TPGK
+        Assert.Equal(none, Play(Street.Flop, air, dryFlop, "Reg")); // the reg's rules don't cover air
 
         // Turn rules decide the turn, and what happened on the flop picks the rule: an overfolder who called a flop
         // bet gets barrelled big, one who checked the flop through gets a small stab.
@@ -321,10 +324,13 @@ public class GeneratorTests
         Assert.Equal(["overfolder-turn-barrel"], DrillGenerator.HandAnchors("Overfolder", rules).Select(r => r.Id));
         Assert.Equal(["nit-river-fold-one-pair", "nit-turn-give-up"], DrillGenerator.HandAnchors("Nit", rules).Select(r => r.Id));
         Assert.Equal(["maniac-river-bluffcatch", "maniac-turn-check-induce"], DrillGenerator.HandAnchors("Maniac", rules).Select(r => r.Id));
-        Assert.Empty(DrillGenerator.HandAnchors("Reg", rules)); // no rules at all
+        Assert.Equal(["reg-river-check-medium", "reg-turn-value"], DrillGenerator.HandAnchors("Reg", rules).Select(r => r.Id));
+        // Without rules for the streets before, nothing can lead into them.
+        Assert.Empty(DrillGenerator.HandAnchors("Reg",
+            rules.Where(r => r.Line is not (LineId.SRP_HeroIP_FlopVillainChecks or LineId.SRP_HeroIP_TurnVillainChecks)).ToList()));
 
         var result = FullRun.Value;
-        Assert.Equal(["hands-nit", "hands-calling-station", "hands-maniac", "hands-overfolder"],
+        Assert.Equal(["hands-nit", "hands-calling-station", "hands-maniac", "hands-overfolder", "hands-reg"],
             result.File.Rules.Where(r => r.Kind == DrillKinds.Hand).Select(r => r.Id));
         foreach (var report in result.Reports.Where(r => r.Kind == DrillKinds.Hand))
         {
