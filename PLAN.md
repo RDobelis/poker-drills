@@ -91,6 +91,11 @@ Raises facing a bet = raise to 3 x bet (capped at stack = all-in). Stacks report
 | SRP_HeroOOP_FacingFlopCbet | V in {UTG, MP, CO, BTN} opens, H=BB calls | H checks, V bets 33% or 75% | 5.5 + bet | Fold, Call, Raise |
 | SRP_HeroIP_RiverVillainChecks | as line 2 | flop & turn each: V checks, then H checks back (50%) or bets 33%/75% (25% each) and V calls; V checks river | computed | Check, Bet33, Bet75, Bet150 |
 | SRP_HeroIP_FacingRiverBet | as line 4 | ... V bets 75% river | computed + bet | Fold, Call, Raise |
+| Pre_FacingThreeBet | H in {UTG, MP, CO, BTN} opens, V any seat after H | V 3-bets 3x IP / 4x from blinds, rest fold | open + 3-bet + dead blinds | Fold, Call, FourBet (2.5x) |
+| SRP_3Way_FlopCheckedToHero | H = BTN opens, SB cold-calls (by type), V = BB calls | SB and V check flop | 7.5 | Check, Bet33, Bet75 |
+
+Rule seating conditions: `behind` (players still to act after hero, iso only) and `others` (opponents in the hand
+besides villain: extra limpers, the 3-way SB). Drills carry `behind` and `others` seats (schemaVersion 5).
 
 ### Preflop ranges (`content/ranges.json`)
 In the postflop lines hero's hand must fit the preflop action. `open[seat]` = hands hero opens from

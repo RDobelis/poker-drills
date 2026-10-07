@@ -1,0 +1,9 @@
+{
+  "id": "maniac-3bet-4bet-premium",
+  "placeholder": true,
+  "villainType": "Maniac",
+  "line": "Pre_FacingThreeBet",
+  "heroGroup": ["Premium"],
+  "correct": "FourBet",
+  "reason": "Premium hands crush a maniac's 3-bet range, and maniacs rarely fold to a 4-bet. 4-bet for value."
+}

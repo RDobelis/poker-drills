@@ -220,7 +220,14 @@ public static partial class ContentLoader
         if (behindRequire.Intersect(behindExclude).Any())
             errors.Add($"behind: {string.Join(", ", behindRequire.Intersect(behindExclude))} both required and excluded");
         if (template is { CanHavePlayersBehind: false } && (behindRequire.Count > 0 || behindExclude.Count > 0))
-            errors.Add($"behind: nobody is left to act behind hero in {template.Id}; behind conditions only apply to preflop spots");
+            errors.Add($"behind: nobody is left to act behind hero in {template.Id}; behind conditions only apply to Pre_IsoVsLimper");
+
+        var othersRequire = TypeIds(dto.Others?.Require, "others.require", types, errors);
+        var othersExclude = TypeIds(dto.Others?.Exclude, "others.exclude", types, errors);
+        if (othersRequire.Intersect(othersExclude).Any())
+            errors.Add($"others: {string.Join(", ", othersRequire.Intersect(othersExclude))} both required and excluded");
+        if (template is { CanHaveOtherOpponents: false } && (othersRequire.Count > 0 || othersExclude.Count > 0))
+            errors.Add($"others: {template.Id} is heads-up; others conditions apply to multiway spots (Pre_IsoVsLimper, SRP_3Way_FlopCheckedToHero)");
 
         if (template is not null && (dto.Correct is null || !template.OptionIds.Contains(dto.Correct)))
             errors.Add($"correct '{dto.Correct}' is not an option of {template.Id}: {string.Join(", ", template.OptionIds)}");
@@ -241,6 +248,8 @@ public static partial class ContentLoader
             BoardExclude = exclude,
             BehindRequire = behindRequire,
             BehindExclude = behindExclude,
+            OthersRequire = othersRequire,
+            OthersExclude = othersExclude,
             Correct = dto.Correct!,
             Reason = dto.Reason!.Trim(),
         };
@@ -329,6 +338,7 @@ public static partial class ContentLoader
         public List<string>? BoardRequire { get; set; }
         public List<string>? BoardExclude { get; set; }
         public BehindDto? Behind { get; set; }
+        public BehindDto? Others { get; set; }
         public string? Correct { get; set; }
         public string? Reason { get; set; }
     }

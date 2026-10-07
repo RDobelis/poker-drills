@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Drill, DrillAction, SeatPlayer, TypeNamer } from '../types';
+import type { Drill, SeatPlayer, TypeNamer } from '../types';
 import { PlayingCard } from './Cards';
 import { bb } from './labels';
 import {
@@ -26,16 +26,6 @@ interface Props {
   selectedSeat?: string | null;
   onSelectSeat?: (seat: Seat) => void;
 }
-
-const ACTION_LABEL: Record<DrillAction['kind'], string> = {
-  Post: '',
-  Fold: 'Fold',
-  Limp: 'Limp',
-  Raise: 'Raise',
-  Call: 'Call',
-  Check: 'Check',
-  Bet: 'Bet',
-};
 
 function prefersReducedMotion(): boolean {
   return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -177,7 +167,7 @@ function SeatView({ seat, slot, state, role, player, typeName, heroCards, acting
   ]
     .filter(Boolean)
     .join(' ');
-  const action = state.last && state.last.kind !== 'Post' ? ACTION_LABEL[state.last.kind] : null;
+  const action = state.label;
 
   const boxContent = (
     <>

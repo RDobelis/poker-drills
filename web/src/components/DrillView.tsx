@@ -55,6 +55,16 @@ export function DrillView({ drill, typeName, chosen, review = false, onChoose }:
           onSelectSeat={setHudSeat}
         />
       )}
+      {drill.others.length > 0 && (
+        <p className="behind-line">
+          Also in the hand:{' '}
+          <b>
+            {drill.others
+              .map((s) => `${typeName(drill.players.find((p) => p.seat === s)?.type ?? '?', true)} (${s})`)
+              .join(', ')}
+          </b>
+        </p>
+      )}
       {drill.behind.length > 0 && (
         <p className="behind-line">
           Left to act behind you:{' '}
@@ -153,6 +163,12 @@ function Facts({ drill }: { drill: Drill }) {
             {f.handGroup ? ` · ${f.handGroup}` : ''}
             {f.handClass ? ` · ${f.handClass}` : ''}
           </dd>
+        </div>
+      )}
+      {drill.others.length > 0 && (
+        <div>
+          <dt>Also in</dt>
+          <dd>{drill.others.map((s) => `${s} ${drill.players.find((p) => p.seat === s)?.type ?? '?'}`).join(', ')}</dd>
         </div>
       )}
       {drill.behind.length > 0 && (

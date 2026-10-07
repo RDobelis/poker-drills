@@ -120,7 +120,7 @@ public class LineTemplateTests
         // Hero + villain start with 100 each; the folded SB adds 0.5 dead money.
         var rng = new Rng(3);
         var deck = new Deck(rng);
-        foreach (var template in LineTemplate.All.Values.Where(t => t.DecisionStreet != Street.Preflop))
+        foreach (var template in LineTemplate.All.Values.Where(t => t.DecisionStreet != Street.Preflop && !t.CanHaveOtherOpponents))
         {
             for (var i = 0; i < 500; i++)
             {
@@ -196,7 +196,12 @@ public class LineTemplateTests
                 Assert.DoesNotContain(spot.HeroPosition, r.Folded);
                 Assert.DoesNotContain(spot.VillainPosition, r.Folded);
                 Assert.Equal(template.DecisionStreet, spot.Actions[^1].Street);
-                if (template.DecisionStreet != Street.Preflop) Assert.Equal(4, r.Folded.Count); // heads-up after preflop
+                if (!template.CanHavePlayersBehind)
+                {
+                    // Everyone but hero, villain and the other opponents in the hand has folded.
+                    var others = TableSeating.OtherOpponents(spot.HeroPosition, spot.VillainPosition, spot.Actions);
+                    Assert.Equal(4 - others.Count, r.Folded.Count);
+                }
             }
         }
     }
@@ -312,7 +317,7 @@ public class LineTemplateTests
     {
         var never = new StatLine(0, 0, 0, 20, 1.0, 50);
         var rng = new Rng(2);
-        foreach (var template in LineTemplate.All.Values)
+        foreach (var template in LineTemplate.All.Values.Where(t => t is not ThreeWayFlopLine)) // that one needs a caller
         {
             for (var i = 0; i < 30; i++)
             {
@@ -353,6 +358,61 @@ public class LineTemplateTests
         Assert.InRange(counts[0] / 4000.0, 0.13, 0.19);
         Assert.InRange(counts[1] / 4000.0, 0.44, 0.52);
         Assert.InRange(counts[2] / 4000.0, 0.32, 0.40);
+    }
+
+    [Theory]
+    [InlineData(Position.MP, Position.BTN, 7.5, 11.5, 5, "4-bet to 18.8bb",
+        "Preflop: UTG folds. Hero (MP) raises to 2.5bb. CO folds. Villain (BTN) 3-bets to 7.5bb. SB, BB fold.")]
+    [InlineData(Position.CO, Position.SB, 10, 13.5, 7.5, "4-bet to 25bb",
+        "Preflop: UTG, MP fold. Hero (CO) raises to 2.5bb. BTN folds. Villain (SB) 3-bets to 10bb. BB folds.")]
+    [InlineData(Position.BTN, Position.BB, 10, 13, 7.5, "4-bet to 25bb",
+        "Preflop: UTG, MP, CO fold. Hero (BTN) raises to 2.5bb. SB folds. Villain (BB) 3-bets to 10bb.")]
+    public void FacingThreeBet_pot_arithmetic(Position hero, Position villain, double threeBet, double pot, double toCall,
+        string fourBet, string history)
+    {
+        // 3-bet: 3x the open in position, 4x from the blinds; pot = open + 3-bet + dead blinds.
+        var spot = new FacingThreeBetLine().Build(new FacingThreeBetLine.Params(hero, villain));
+        Assert.Equal((decimal)pot, spot.Pot);
+        Assert.Equal((decimal)toCall, spot.ToCall);
+        Assert.Equal(97.5m, spot.HeroStack);
+        Assert.Equal(100m - (decimal)threeBet, spot.VillainStack);
+        Assert.Equal(Invariant($"Call {toCall}bb"), Label(spot, "Call"));
+        Assert.Equal(fourBet, Label(spot, "FourBet"));
+        Assert.Equal([history], spot.ActionHistory);
+        var r = Replay(spot);
+        Assert.Equal(spot.Pot, r.Pot);
+        Assert.Equal(spot.ToCall, r.ToCall);
+        Assert.Throws<ArgumentException>(() => new FacingThreeBetLine().Build(new FacingThreeBetLine.Params(Position.CO, Position.MP)));
+    }
+
+    [Fact]
+    public void ThreeWay_pot_arithmetic_and_history()
+    {
+        var spot = new ThreeWayFlopLine().Build(Flop);
+        Assert.Equal(7.5m, spot.Pot); // three 2.5bb opens/calls
+        Assert.Equal(97.5m, spot.HeroStack);
+        Assert.Equal("Bet 33% (2.5bb)", Label(spot, "Bet33")); // 2.475 -> 2.5
+        Assert.Equal("Bet 75% (5.6bb)", Label(spot, "Bet75")); // 5.625 -> 5.6
+        Assert.Equal("Preflop: UTG, MP, CO fold. Hero (BTN) raises to 2.5bb. SB calls. Villain (BB) calls.", spot.ActionHistory[0]);
+        Assert.Equal("Flop [Ks 7d 2c] (7.5bb): SB checks. Villain checks.", spot.ActionHistory[1]);
+        Assert.Equal([Position.SB], TableSeating.OtherOpponents(spot.HeroPosition, spot.VillainPosition, spot.Actions));
+        Assert.Empty(TableSeating.SeatsBehind(spot.HeroPosition, spot.Actions));
+        var r = Replay(spot);
+        Assert.Equal(spot.Pot, r.Pot);
+    }
+
+    [Fact]
+    public void ThreeWay_small_blind_must_be_a_cold_caller()
+    {
+        var line = new ThreeWayFlopLine();
+        var spot = line.Build(Flop);
+        var rng = new Rng(6);
+        var others = Everyone(spot, new StatLine(0, 0, 0, 20, 1.0, 50)); // never plays a hand
+        Assert.Null(line.ApplySeating(spot, others, rng));
+
+        others[Position.SB] = new StatLine(100, 0, 0, 40, 0.5, 20); // cold-calls 50% of opens
+        var fits = Enumerable.Range(0, 2000).Count(_ => line.ApplySeating(spot, others, rng) is not null);
+        Assert.InRange(fits / 2000.0, 0.45, 0.55);
     }
 
     [Fact]

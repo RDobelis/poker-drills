@@ -15,6 +15,8 @@ export interface SeatState {
   folded: boolean;
   /** Last action on this street (a fold stays visible for the rest of the hand). */
   last: DrillAction | null;
+  /** Tag for the last action: "Raise", "3-bet", "Call", "Fold"... (none for posting a blind). */
+  label: string | null;
 }
 
 export interface TableState {
@@ -22,6 +24,8 @@ export interface TableState {
   /** Chips collected from earlier streets. */
   pot: number;
   seats: Record<Seat, SeatState>;
+  /** Raises so far on this street (the next one is a 3-bet after an open, and so on). */
+  raises: number;
   boardCount: number;
   /** Steps taken in the frame being shown (for highlighting). */
   acted: DrillAction[];
@@ -47,8 +51,8 @@ export const toCallFor = (t: TableState, seat: Seat): number =>
 
 function emptyTable(): TableState {
   const seats = {} as Record<Seat, SeatState>;
-  for (const s of SEATS) seats[s] = { stack: STARTING_STACK, inFront: 0, folded: false, last: null };
-  return { street: 'Preflop', pot: 0, seats, boardCount: 0, acted: [] };
+  for (const s of SEATS) seats[s] = { stack: STARTING_STACK, inFront: 0, folded: false, last: null, label: null };
+  return { street: 'Preflop', pot: 0, seats, raises: 0, boardCount: 0, acted: [] };
 }
 
 /** Next street: chips in front go into the pot and the new board cards appear. */
@@ -56,21 +60,26 @@ function advanceStreet(t: TableState, street: Street): TableState {
   const seats = {} as Record<Seat, SeatState>;
   for (const s of SEATS) {
     const seat = t.seats[s];
-    seats[s] = { ...seat, inFront: 0, last: seat.folded ? seat.last : null };
+    seats[s] = { ...seat, inFront: 0, last: seat.folded ? seat.last : null, label: seat.folded ? seat.label : null };
   }
-  return { ...t, street, pot: totalPot(t), seats, boardCount: boardCountFor(street) };
+  return { ...t, street, pot: totalPot(t), seats, raises: 0, boardCount: boardCountFor(street) };
 }
+
+/** "Raise" for the first raise on a street (the open), then "3-bet", "4-bet"... (the blind counts as bet one). */
+const raiseLabel = (raisesBefore: number) => (raisesBefore === 0 ? 'Raise' : `${raisesBefore + 2}-bet`);
 
 function applyAction(t: TableState, a: DrillAction): TableState {
   const table = streetIndex(a.street) > streetIndex(t.street) ? advanceStreet(t, a.street) : t;
   const seat = table.seats[a.seat];
-  const next: SeatState = { ...seat, last: a };
+  const label = a.kind === 'Post' ? null : a.kind === 'Raise' ? raiseLabel(table.raises) : a.kind;
+  const next: SeatState = { ...seat, last: a, label };
   if (a.kind === 'Fold') next.folded = true;
   else if (a.kind !== 'Check') {
     next.stack = round(seat.stack - (a.to - seat.inFront));
     next.inFront = a.to;
   }
-  return { ...table, seats: { ...table.seats, [a.seat]: next } };
+  const raises = table.raises + (a.kind === 'Raise' ? 1 : 0);
+  return { ...table, raises, seats: { ...table.seats, [a.seat]: next } };
 }
 
 /**
@@ -132,7 +141,14 @@ function who(drill: Drill, seat: string, typeName: TypeNamer): string {
 }
 
 export function describeAction(drill: Drill, a: DrillAction, typeName: TypeNamer): string {
-  const verb = VERBS[a.kind][a.seat === drill.heroPosition ? 0 : 1];
+  const isHero = a.seat === drill.heroPosition;
+  const raisesBefore = drill.actions
+    .slice(0, drill.actions.indexOf(a))
+    .filter((x) => x.street === a.street && x.kind === 'Raise').length;
+  const verb =
+    a.kind === 'Raise' && raisesBefore > 0
+      ? `${raiseLabel(raisesBefore)}${isHero ? '' : 's'} to`
+      : VERBS[a.kind][isHero ? 0 : 1];
   const amount = a.kind === 'Fold' || a.kind === 'Check' ? '' : ` ${round(a.to)}bb`;
   return `${who(drill, a.seat, typeName)} ${verb}${amount}`;
 }

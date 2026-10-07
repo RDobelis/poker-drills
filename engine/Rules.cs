@@ -39,8 +39,22 @@ public sealed record Rule
 
     public bool HasBehindConditions => BehindRequire.Count > 0 || BehindExclude.Count > 0;
 
+    /// <summary>Player types that must all be among the other opponents still in the hand (besides villain).</summary>
+    public IReadOnlyList<string> OthersRequire { get; init; } = [];
+
+    /// <summary>Player types that may not be among the other opponents still in the hand (besides villain).</summary>
+    public IReadOnlyList<string> OthersExclude { get; init; } = [];
+
+    public bool HasOthersConditions => OthersRequire.Count > 0 || OthersExclude.Count > 0;
+
     public required string Correct { get; init; }
     public required string Reason { get; init; }
+}
+
+/// <summary>Player types of the seats left to act behind hero, and of the other opponents still in the hand.</summary>
+public sealed record Seating(IReadOnlyCollection<string> Behind, IReadOnlyCollection<string> Others)
+{
+    public static Seating Empty { get; } = new([], []);
 }
 
 /// <summary>Everything a rule can test, derived from the cards of a spot.</summary>
@@ -59,15 +73,16 @@ public sealed record SpotFacts(HandClass? HandClass, DrawFlags Draws, BoardFlags
 public static class RuleMatcher
 {
     /// <summary>
-    /// A rule matches when line, villain type, every hand/board condition and the players left to act
-    /// behind hero (<paramref name="behindTypes"/>: their player types) all match.
+    /// A rule matches when line, villain type, every hand/board condition and the seating (who is left to act
+    /// behind hero, who else is still in the hand) all match.
     /// </summary>
-    public static bool Matches(Rule rule, string villainType, LineId line, SpotFacts facts, IReadOnlyCollection<string> behindTypes) =>
-        MatchesCards(rule, villainType, line, facts) && MatchesBehind(rule, behindTypes);
+    public static bool Matches(Rule rule, string villainType, LineId line, SpotFacts facts, Seating seating) =>
+        MatchesCards(rule, villainType, line, facts) && MatchesSeating(rule, seating);
 
-    /// <summary>Every required type is behind hero and no excluded type is.</summary>
-    public static bool MatchesBehind(Rule rule, IReadOnlyCollection<string> behindTypes) =>
-        rule.BehindRequire.All(behindTypes.Contains) && !rule.BehindExclude.Any(behindTypes.Contains);
+    /// <summary>Required types are present and excluded types absent, behind hero and among the other opponents.</summary>
+    public static bool MatchesSeating(Rule rule, Seating seating) =>
+        rule.BehindRequire.All(seating.Behind.Contains) && !rule.BehindExclude.Any(seating.Behind.Contains)
+        && rule.OthersRequire.All(seating.Others.Contains) && !rule.OthersExclude.Any(seating.Others.Contains);
 
     /// <summary>Everything except the players behind: line, villain type, hand and board.</summary>
     public static bool MatchesCards(Rule rule, string villainType, LineId line, SpotFacts facts)

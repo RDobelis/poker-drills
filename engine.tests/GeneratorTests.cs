@@ -30,10 +30,13 @@ public class GeneratorTests
             Assert.Equal(template.BoardCardCount, board.Length);
             CardList.EnsureDistinct(hole.Concat(board));
             var facts = SpotFacts.Analyze(hole, board, ClassifierOptions.Default);
-            var behindTypes = DrillGenerator.BehindTypes(d);
-            Assert.True(RuleMatcher.Matches(rule, d.VillainType, rule.Line, facts, behindTypes), $"{d.Id} does not match {rule.Id}");
-            Assert.Equal(behindTypes.Count, d.Behind.Count);
-            Assert.Equal(template.CanHavePlayersBehind, d.Behind.Count > 0); // blinds are always left to act preflop
+            var seating = DrillGenerator.SeatingOf(d);
+            Assert.True(RuleMatcher.Matches(rule, d.VillainType, rule.Line, facts, seating), $"{d.Id} does not match {rule.Id}");
+            Assert.Equal(seating.Behind.Count, d.Behind.Count);
+            Assert.Equal(seating.Others.Count, d.Others.Count);
+            Assert.Equal(template.CanHavePlayersBehind, d.Behind.Count > 0); // the blinds are left to act in iso spots
+            if (!template.CanHaveOtherOpponents) Assert.Empty(d.Others);
+            if (rule.Line == LineId.SRP_3Way_FlopCheckedToHero) Assert.Equal(["SB"], d.Others);
 
             Assert.Equal(rule.Line.ToString(), d.Line);
             Assert.Equal(rule.Correct, d.Correct);
@@ -70,10 +73,13 @@ public class GeneratorTests
 
             var villainTypes = StatSampler.TypesContaining(content.Types, d.VillainStats).Select(t => t.Id);
             Assert.Equal([d.VillainType], villainTypes);
-            // Chip conservation. Postflop: 100 + 100 + dead SB. Preflop: 100 + 100 + both live blinds + 1bb per extra limper.
-            var extraLimpers = d.Actions.Count(a => a.Kind == "Limp" && a.Seat != d.VillainPosition);
-            var expectedChips = template.DecisionStreet == Street.Preflop ? 201.5 + extraLimpers : 200.5;
-            Assert.Equal(expectedChips, d.Stacks!.Hero + d.Stacks.Villain + d.Pot!.Value, 6);
+            // Chip conservation: hero + villain stacks + pot = their 200bb + whatever everyone else put in
+            // (dead blinds, extra limpers, the small blind's call in 3-way pots).
+            var othersIn = d.Actions
+                .Where(a => a.Seat != d.HeroPosition && a.Seat != d.VillainPosition)
+                .GroupBy(a => (a.Seat, a.Street))
+                .Sum(g => g.Max(a => a.To));
+            Assert.Equal(200 + othersIn, d.Stacks!.Hero + d.Stacks.Villain + d.Pot!.Value, 6);
         }
     }
 
@@ -144,11 +150,13 @@ public class GeneratorTests
     [Fact]
     public void Seating_never_changes_the_cards_of_postflop_drills()
     {
-        // Preflop spots can gain extra limpers from the seating, and "behind" rules choose their seating,
-        // so the check is about the postflop rules: who sits around the table never changes their cards or ids.
+        // Preflop spots can gain extra limpers from the seating, multiway spots need a cold-caller, and rules with
+        // seating conditions choose their seating, so the check is about the heads-up postflop rules: who sits around
+        // the table never changes their cards or ids.
         var content = TestHelpers.Content;
         var stableRules = content.Rules
-            .Where(r => !r.HasBehindConditions && LineTemplate.For(r.Line).DecisionStreet != Street.Preflop)
+            .Where(r => !r.HasBehindConditions && !r.HasOthersConditions
+                && LineTemplate.For(r.Line) is { DecisionStreet: not Street.Preflop, CanHaveOtherOpponents: false })
             .Select(r => r.Id)
             .ToHashSet();
         var maniacTable = content with { Types = content.Types.Select(t => t with { TableShare = t.Id == "Maniac" ? 100 : 1 }).ToList() };
@@ -172,12 +180,17 @@ public class GeneratorTests
         static double Rate(IReadOnlyCollection<string> types, string type) => types.Count(t => t == type) / (double)types.Count;
         static string TypeAt(Drill d, string seat) => d.Players.Single(p => p.Seat == seat).Type;
 
-        // Nobody but hero and villain raises or calls before hero's decision: those would be different spots.
+        // Only hero, villain and the other opponents the spot is built around (the 3-way small blind) raise or call.
         foreach (var d in drills)
         {
             Assert.DoesNotContain(d.Actions, a =>
-                a.Street == "Preflop" && a.Seat != d.HeroPosition && a.Seat != d.VillainPosition && a.Kind is "Raise" or "Call");
+                a.Street == "Preflop" && a.Seat != d.HeroPosition && a.Seat != d.VillainPosition && !d.Others.Contains(a.Seat)
+                && a.Kind is "Raise" or "Call");
         }
+
+        // The small blind who cold-calls in 3-way pots is usually a station.
+        var coldCallers = drills.Where(d => d.Line == "SRP_3Way_FlopCheckedToHero").Select(d => TypeAt(d, "SB")).ToList();
+        Assert.True(Rate(coldCallers, "CallingStation") > Share("CallingStation") * 1.5, $"station share {Rate(coldCallers, "CallingStation")}");
 
         // Players folding before anyone raised are mostly tight: maniacs fold far less often than they sit down.
         var firstInFolders = drills.SelectMany(d => FirstInFolds(d).Select(seat => TypeAt(d, seat))).ToList();
@@ -210,8 +223,10 @@ public class GeneratorTests
         var withManiac = drills.Where(d => d.RuleId == "station-iso-playable-maniac-behind").ToList();
         var withoutManiac = drills.Where(d => d.RuleId == "station-iso-playable").ToList();
         Assert.True(withManiac.Count >= 150 && withoutManiac.Count >= 150);
-        Assert.All(withManiac, d => Assert.Contains("Maniac", DrillGenerator.BehindTypes(d)));
-        Assert.All(withoutManiac, d => Assert.DoesNotContain("Maniac", DrillGenerator.BehindTypes(d)));
+        Assert.All(withManiac, d => Assert.Contains("Maniac", DrillGenerator.SeatingOf(d).Behind));
+        Assert.All(withoutManiac, d => Assert.DoesNotContain("Maniac", DrillGenerator.SeatingOf(d).Behind));
+        Assert.All(drills.Where(d => d.RuleId == "overfolder-3way-dry-stab"),
+            d => Assert.DoesNotContain("CallingStation", DrillGenerator.SeatingOf(d).Others));
         Assert.Contains("left to act behind you: Maniac",
             FullRun.Value.File.Rules.Single(r => r.Id == "station-iso-playable-maniac-behind").Conditions);
     }
@@ -261,7 +276,7 @@ public class GeneratorTests
         // The example really is matched by both rules.
         var facts = SpotFacts.Analyze(conflict.Example.HeroCards.Select(Card.Parse).ToArray(),
             conflict.Example.Board.Select(Card.Parse).ToArray(), ClassifierOptions.Default);
-        Assert.True(RuleMatcher.Matches(check, conflict.Example.VillainType, check.Line, facts, DrillGenerator.BehindTypes(conflict.Example)));
+        Assert.True(RuleMatcher.Matches(check, conflict.Example.VillainType, check.Line, facts, DrillGenerator.SeatingOf(conflict.Example)));
         Assert.Contains(result.Reports, r => r.RuleId == "test-check" && r.Conflicts > 0);
     }
 

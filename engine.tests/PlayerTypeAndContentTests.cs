@@ -11,7 +11,8 @@ public class PlayerTypeAndContentTests
     {
         var content = TestHelpers.Content;
         Assert.Equal(["Nit", "CallingStation", "Maniac", "Overfolder", "Reg"], content.Types.Select(t => t.Id));
-        Assert.Equal(11, content.Rules.Count);
+        Assert.Equal(16, content.Rules.Count);
+        Assert.Equal(["CallingStation"], content.Rules.Single(r => r.Id == "overfolder-3way-dry-stab").OthersExclude);
         var maniacBehind = content.Rules.Single(r => r.Id == "station-iso-playable-maniac-behind");
         Assert.Equal(["Maniac"], maniacBehind.BehindRequire);
         Assert.Empty(maniacBehind.BehindExclude);
@@ -103,7 +104,14 @@ public class PlayerTypeAndContentTests
     public void Behind_conditions_only_apply_preflop()
     {
         var json = ValidRule.Replace("\"reason\": \"r\"", "\"reason\": \"r\", \"behind\": { \"exclude\": [\"Maniac\"] }");
-        Assert.Contains("only apply to preflop", Assert.Throws<ContentException>(() => Parse(json)).Message);
+        Assert.Contains("only apply to Pre_IsoVsLimper", Assert.Throws<ContentException>(() => Parse(json)).Message);
+    }
+
+    [Fact]
+    public void Others_conditions_only_apply_to_multiway_spots()
+    {
+        var json = ValidRule.Replace("\"reason\": \"r\"", "\"reason\": \"r\", \"others\": { \"exclude\": [\"Maniac\"] }");
+        Assert.Contains("heads-up", Assert.Throws<ContentException>(() => Parse(json)).Message);
     }
 
     [Fact]

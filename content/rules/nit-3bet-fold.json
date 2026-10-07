@@ -1,0 +1,9 @@
+{
+  "id": "nit-3bet-fold",
+  "placeholder": true,
+  "villainType": "Nit",
+  "line": "Pre_FacingThreeBet",
+  "heroGroup": ["Strong", "Playable"],
+  "correct": "Fold",
+  "reason": "A nit's 3-bet is almost always QQ+ or AK. Even strong hands are behind: fold."
+}

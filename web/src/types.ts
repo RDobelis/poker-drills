@@ -57,6 +57,8 @@ export interface Drill {
   players: SeatPlayer[];
   /** Seats still to act after hero at the decision (empty postflop). */
   behind: DrillAction['seat'][];
+  /** Other opponents still in the hand besides villain (extra limpers, the 3-way small blind). */
+  others: DrillAction['seat'][];
   heroCards: string[];
   board: string[];
   question: string;

@@ -1,0 +1,13 @@
+{
+  "id": "overfolder-3way-dry-stab",
+  "placeholder": true,
+  "villainType": "Overfolder",
+  "line": "SRP_3Way_FlopCheckedToHero",
+  "hero": { "minStrength": "Air", "maxStrength": "Air" },
+  "draws": "none",
+  "boardRequire": ["Dry"],
+  "boardExclude": [],
+  "others": { "exclude": ["CallingStation"] },
+  "correct": "Bet33",
+  "reason": "An overfolder and no station in a dry 3-way pot: a small stab takes it down often enough."
+}

@@ -4,6 +4,8 @@ export const LINE_LABELS: Record<string, string> = {
   SRP_HeroOOP_FacingFlopCbet: 'Flop · facing c-bet',
   SRP_HeroIP_RiverVillainChecks: 'River · villain checks',
   SRP_HeroIP_FacingRiverBet: 'River · facing bet',
+  Pre_FacingThreeBet: 'Preflop · facing a 3-bet',
+  SRP_3Way_FlopCheckedToHero: 'Flop · 3-way, checked to you',
   Identify: 'Read the HUD',
 };
 

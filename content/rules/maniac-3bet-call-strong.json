@@ -1,0 +1,9 @@
+{
+  "id": "maniac-3bet-call-strong",
+  "placeholder": true,
+  "villainType": "Maniac",
+  "line": "Pre_FacingThreeBet",
+  "heroGroup": ["Strong"],
+  "correct": "Call",
+  "reason": "Maniacs 3-bet a very wide range. Strong hands are well ahead: call and play the pot."
+}

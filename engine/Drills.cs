@@ -45,6 +45,9 @@ public sealed record Drill
 
     /// <summary>Seats still to act after hero at the decision (empty postflop).</summary>
     public required IReadOnlyList<string> Behind { get; init; }
+
+    /// <summary>Other opponents still in the hand besides villain (extra limpers, the small blind in 3-way pots).</summary>
+    public required IReadOnlyList<string> Others { get; init; }
     public required IReadOnlyList<string> HeroCards { get; init; }
     public required IReadOnlyList<string> Board { get; init; }
     public required string Question { get; init; }

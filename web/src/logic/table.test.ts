@@ -93,10 +93,27 @@ describe('table replay of the generated drills', () => {
       const type = typeName(d.players.find((p) => p.seat === limper.seat)!.type);
       expect(captions, d.id).toContain(`${type} (${limper.seat}) limps 1bb`);
     }
-    // Nobody but hero and villain raises or calls before hero's decision.
+    // Besides hero and villain, only the opponents the spot is built around (the 3-way small blind) raise or call.
     for (const d of actionDrills) {
-      const others = d.actions.filter((a) => a.street === 'Preflop' && a.seat !== d.heroPosition && a.seat !== d.villainPosition);
-      expect(others.every((a) => a.kind === 'Post' || a.kind === 'Fold' || a.kind === 'Limp'), d.id).toBe(true);
+      const rest = d.actions.filter(
+        (a) => a.street === 'Preflop' && a.seat !== d.heroPosition && a.seat !== d.villainPosition && !d.others.includes(a.seat),
+      );
+      expect(rest.every((a) => a.kind === 'Post' || a.kind === 'Fold' || a.kind === 'Limp'), d.id).toBe(true);
+    }
+  });
+
+  it('names 3-bets and keeps the 3-way small blind in the hand', () => {
+    const threeBet = actionDrills.find((d) => d.line === 'Pre_FacingThreeBet')!;
+    const frames = buildFrames(threeBet);
+    const captions = frames.map((_, i) => describeFrame(threeBet, frames, i, typeName));
+    const raiseTo = threeBet.actions.find((a) => a.seat === threeBet.villainPosition && a.kind === 'Raise')!.to;
+    expect(captions).toContain(`${typeName(threeBet.villainType)} (${threeBet.villainPosition}) 3-bets to ${raiseTo}bb`);
+    expect(tableAt(threeBet, frames.at(-1)!).seats[threeBet.villainPosition as Seat].label).toBe('3-bet');
+
+    for (const d of actionDrills.filter((x) => x.line === 'SRP_3Way_FlopCheckedToHero')) {
+      expect(d.others, d.id).toEqual(['SB']);
+      const end = tableAt(d, buildFrames(d).at(-1)!);
+      expect(end.seats.SB.folded || end.seats.BB.folded, d.id).toBe(false);
     }
   });
 

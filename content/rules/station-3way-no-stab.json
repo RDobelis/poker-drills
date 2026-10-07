@@ -1,0 +1,12 @@
+{
+  "id": "station-3way-no-stab",
+  "placeholder": true,
+  "villainType": "CallingStation",
+  "line": "SRP_3Way_FlopCheckedToHero",
+  "hero": { "minStrength": "Air", "maxStrength": "Air" },
+  "draws": "none",
+  "boardRequire": [],
+  "boardExclude": [],
+  "correct": "Check",
+  "reason": "In a 3-way pot with a station, somebody nearly always has a piece. Don't stab with air."
+}

@@ -120,6 +120,9 @@ type is part of the match.
     behind hero, so the loader rejects it there.) When a general rule and a "behind" rule overlap with
     different answers, the conflict checker flags it; add an `exclude` to the general rule, as
     `station-iso-playable` does.
+  - Multiway spots, optional: `"others": { "require": [...], "exclude": [...] }` works the same way for the
+    other opponents still in the hand besides villain (extra limpers, the 3-way small blind), e.g.
+    `overfolder-3way-dry-stab` excludes a station in the small blind.
   - `correct` must be one of the line's options.
 
 The loader is strict: unknown properties (typos), unknown names, a `correct` answer the line does not
@@ -131,7 +134,7 @@ Names you can use:
 |---|---|
 | strengths | `Air WeakPair SecondPair TopPairWeakKicker TopPairGoodKicker Overpair TwoPair Set Trips Straight Flush FullHousePlus` |
 | board flags | `Paired Monotone TwoTone Rainbow FourToFlush FourToStraight Dry` |
-| lines (options) | `Pre_IsoVsLimper` (Fold, Limp, Iso3, Iso5) · `SRP_HeroIP_FlopVillainChecks` (Check, Bet33, Bet75) · `SRP_HeroOOP_FacingFlopCbet` (Fold, Call, Raise) · `SRP_HeroIP_RiverVillainChecks` (Check, Bet33, Bet75, Bet150) · `SRP_HeroIP_FacingRiverBet` (Fold, Call, Raise) |
+| lines (options) | `Pre_IsoVsLimper` (Fold, Limp, Iso3, Iso5) · `SRP_HeroIP_FlopVillainChecks` (Check, Bet33, Bet75) · `SRP_HeroOOP_FacingFlopCbet` (Fold, Call, Raise) · `SRP_HeroIP_RiverVillainChecks` (Check, Bet33, Bet75, Bet150) · `SRP_HeroIP_FacingRiverBet` (Fold, Call, Raise) · `Pre_FacingThreeBet` (Fold, Call, FourBet): hero opens, villain 3-bets (3x in position, 4x from the blinds) · `SRP_3Way_FlopCheckedToHero` (Check, Bet33, Bet75): hero opens the button, the small blind (a player who cold-calls by type) and villain in the big blind call, both check the flop |
 
 After editing, run the generator again and reload the app.
 

@@ -14,6 +14,8 @@ public enum LineId
     SRP_HeroOOP_FacingFlopCbet,
     SRP_HeroIP_RiverVillainChecks,
     SRP_HeroIP_FacingRiverBet,
+    Pre_FacingThreeBet,
+    SRP_3Way_FlopCheckedToHero,
 }
 
 public enum ActionKind { Post, Fold, Limp, Raise, Call, Check, Bet }
@@ -35,6 +37,20 @@ public static class TableSeating
     {
         var acted = actions.Where(a => a.Kind != ActionKind.Post).Select(a => a.Seat).ToHashSet();
         return Enum.GetValues<Position>().Where(p => p > hero && !acted.Contains(p)).ToList();
+    }
+
+    /// <summary>
+    /// Opponents still in the hand besides villain: seats that put chips in voluntarily (limp, call, raise, bet)
+    /// and never folded. Extra limpers in "villain limps" spots, the small blind in 3-way pots.
+    /// </summary>
+    public static IReadOnlyList<Position> OtherOpponents(Position hero, Position villain, IEnumerable<ActionStep> actions)
+    {
+        var list = actions.ToList();
+        return Enum.GetValues<Position>()
+            .Where(p => p != hero && p != villain
+                && list.Any(a => a.Seat == p && a.Kind is ActionKind.Limp or ActionKind.Call or ActionKind.Raise or ActionKind.Bet)
+                && !list.Any(a => a.Seat == p && a.Kind == ActionKind.Fold))
+            .ToList();
     }
 }
 
@@ -82,8 +98,11 @@ public abstract class LineTemplate
     public abstract IReadOnlyList<string> OptionIds { get; }
     public abstract string Question { get; }
 
-    /// <summary>Whether players can still be left to act behind hero at the decision (only preflop spots).</summary>
-    public bool CanHavePlayersBehind => DecisionStreet == Street.Preflop;
+    /// <summary>Whether players can still be left to act behind hero at the decision.</summary>
+    public virtual bool CanHavePlayersBehind => false;
+
+    /// <summary>Whether opponents besides villain can still be in the hand at the decision.</summary>
+    public virtual bool CanHaveOtherOpponents => false;
 
     public int BoardCardCount => DecisionStreet switch
     {
@@ -139,6 +158,8 @@ public abstract class LineTemplate
         new FacingFlopCbetLine(),
         new RiverVillainChecksLine(),
         new FacingRiverBetLine(),
+        new FacingThreeBetLine(),
+        new ThreeWayFlopLine(),
     }.ToDictionary(t => t.Id);
 
     public static LineTemplate For(LineId id) => All[id];
@@ -240,6 +261,8 @@ public sealed class IsoVsLimperLine : LineTemplate
 
     public override LineId Id => LineId.Pre_IsoVsLimper;
     public override Street DecisionStreet => Street.Preflop;
+    public override bool CanHavePlayersBehind => true; // the blinds (and the button when hero is CO) act after hero
+    public override bool CanHaveOtherOpponents => true; // extra limpers
     public override IReadOnlyList<string> OptionIds { get; } = ["Fold", "Limp", "Iso3", "Iso5"];
     public override string Question => "Villain limps. What do you do?";
 
@@ -523,5 +546,141 @@ public sealed class FacingRiverBetLine : SrpToRiverLine
         steps.Add(new ActionStep(Street.River, Position.BB, ActionKind.Bet, bet));
         return new Spot(Id, p.Hero, Position.BB, pot + bet, bet, stack, stack - bet, history, steps,
             FacingBetOptions(bet, stack));
+    }
+}
+
+/// <summary>
+/// Hero opens, a player behind 3-bets (3x the open in position, 4x from the blinds), everyone else folds,
+/// hero decides: fold, call or 4-bet (to 2.5x the 3-bet).
+/// </summary>
+public sealed class FacingThreeBetLine : LineTemplate
+{
+    public sealed record Params(Position Hero, Position Villain);
+
+    public static IReadOnlyList<Position> HeroSeats { get; } = [Position.UTG, Position.MP, Position.CO, Position.BTN];
+
+    public override LineId Id => LineId.Pre_FacingThreeBet;
+    public override Street DecisionStreet => Street.Preflop;
+    public override IReadOnlyList<string> OptionIds { get; } = ["Fold", "Call", "FourBet"];
+    public override string Question => "Villain 3-bets your open. What do you do?";
+
+    public static decimal ThreeBetSize(Position villain) =>
+        Stakes.OpenSize * (villain is Position.SB or Position.BB ? 4m : 3m);
+
+    public static decimal FourBetSize(decimal threeBet) => Math.Round(threeBet * 2.5m, 1, MidpointRounding.AwayFromZero);
+
+    public override Spot Build(Rng rng, IReadOnlyList<Card> board) => Build(Sample(rng), board);
+
+    public override Spot? TryBuild(Rng rng, IReadOnlyList<Card> hole, IReadOnlyList<Card> board, PreflopRanges ranges)
+    {
+        var p = Sample(rng);
+        return ranges.CanOpen(p.Hero, hole) ? Build(p, board) : null;
+    }
+
+    private static Params Sample(Rng rng)
+    {
+        var hero = rng.Pick(HeroSeats);
+        return new Params(hero, rng.Pick(Enum.GetValues<Position>().Where(x => x > hero).ToList()));
+    }
+
+    public Spot Build(Params p, IReadOnlyList<Card>? board = null)
+    {
+        RequireBoard(board ?? []);
+        if (!HeroSeats.Contains(p.Hero) || p.Villain <= p.Hero)
+        {
+            throw new ArgumentException($"Unsupported seating {p}: villain must act after hero", nameof(p));
+        }
+
+        var threeBet = ThreeBetSize(p.Villain);
+        var after = Enum.GetValues<Position>().Where(x => x > p.Villain).ToList();
+        var steps = PostBlinds();
+        steps.AddRange(FoldSteps(Before(p.Hero)));
+        steps.Add(new ActionStep(Street.Preflop, p.Hero, ActionKind.Raise, Stakes.OpenSize));
+        steps.AddRange(FoldSteps(Between(p.Hero, p.Villain)));
+        steps.Add(new ActionStep(Street.Preflop, p.Villain, ActionKind.Raise, threeBet));
+        steps.AddRange(FoldSteps(after));
+
+        // Open + 3-bet + whatever blinds the villain didn't post itself (they are dead money).
+        var deadBlinds = (p.Villain == Position.SB ? 0m : Stakes.SmallBlind) + (p.Villain == Position.BB ? 0m : Stakes.BigBlind);
+        var pot = Stakes.OpenSize + threeBet + deadBlinds;
+        var history = new[]
+        {
+            "Preflop: " + Sentence(
+                Folds(Before(p.Hero)),
+                $"{Seat("Hero", p.Hero)} raises to {Stakes.Bb(Stakes.OpenSize)}.",
+                Folds(Between(p.Hero, p.Villain)),
+                $"{Seat("Villain", p.Villain)} 3-bets to {Stakes.Bb(threeBet)}.",
+                Folds(after)),
+        };
+
+        var heroStack = Stakes.StartingStack - Stakes.OpenSize;
+        var fourBet = FourBetSize(threeBet);
+        IReadOnlyList<DrillOption> options =
+        [
+            new("Fold", "Fold"),
+            new("Call", $"Call {Stakes.Bb(threeBet - Stakes.OpenSize)}"),
+            fourBet - Stakes.OpenSize >= heroStack
+                ? new DrillOption("FourBet", $"All-in ({Stakes.Bb(Stakes.StartingStack)})")
+                : new DrillOption("FourBet", $"4-bet to {Stakes.Bb(fourBet)}"),
+        ];
+        return new Spot(Id, p.Hero, p.Villain, pot, threeBet - Stakes.OpenSize, heroStack,
+            Stakes.StartingStack - threeBet, history, steps, options);
+    }
+}
+
+/// <summary>
+/// Hero opens on the button, the small blind calls, villain calls in the big blind; both check the flop to hero.
+/// Whoever sits in the small blind must be a player who would cold-call there (see <see cref="ApplySeating"/>).
+/// </summary>
+public sealed class ThreeWayFlopLine : LineTemplate
+{
+    public override LineId Id => LineId.SRP_3Way_FlopCheckedToHero;
+    public override Street DecisionStreet => Street.Flop;
+    public override bool CanHaveOtherOpponents => true; // the small blind
+    public override IReadOnlyList<string> OptionIds { get; } = ["Check", "Bet33", "Bet75"];
+    public override string Question => "Both players check to you. What do you do?";
+
+    public override Spot Build(Rng rng, IReadOnlyList<Card> board) => Build(board);
+
+    public override Spot? TryBuild(Rng rng, IReadOnlyList<Card> hole, IReadOnlyList<Card> board, PreflopRanges ranges) =>
+        ranges.CanOpen(Position.BTN, hole) ? Build(board) : null;
+
+    public Spot Build(IReadOnlyList<Card> board)
+    {
+        RequireBoard(board);
+        var pot = 3 * Stakes.OpenSize;
+        var stack = Stakes.StartingStack - Stakes.OpenSize;
+
+        var steps = PostBlinds();
+        steps.AddRange(FoldSteps(Before(Position.BTN)));
+        steps.Add(new ActionStep(Street.Preflop, Position.BTN, ActionKind.Raise, Stakes.OpenSize));
+        steps.Add(new ActionStep(Street.Preflop, Position.SB, ActionKind.Call, Stakes.OpenSize));
+        steps.Add(new ActionStep(Street.Preflop, Position.BB, ActionKind.Call, Stakes.OpenSize));
+        steps.Add(new ActionStep(Street.Flop, Position.SB, ActionKind.Check, 0m));
+        steps.Add(new ActionStep(Street.Flop, Position.BB, ActionKind.Check, 0m));
+
+        var history = new[]
+        {
+            "Preflop: " + Sentence(
+                Folds(Before(Position.BTN)),
+                $"{Seat("Hero", Position.BTN)} raises to {Stakes.Bb(Stakes.OpenSize)}.",
+                "SB calls.",
+                $"{Seat("Villain", Position.BB)} calls."),
+            $"{StreetHeader("Flop", board, pot)} SB checks. Villain checks.",
+        };
+        IReadOnlyList<DrillOption> options =
+        [
+            new("Check", "Check"),
+            BetOption("Bet33", 33, pot, stack),
+            BetOption("Bet75", 75, pot, stack),
+        ];
+        return new Spot(Id, Position.BTN, Position.BB, pot, 0m, stack, stack, history, steps, options);
+    }
+
+    /// <summary>The folders must fold by type, and the small blind must be a player who cold-calls the open.</summary>
+    public override Spot? ApplySeating(Spot spot, IReadOnlyDictionary<Position, StatLine> others, Rng rng)
+    {
+        if (base.ApplySeating(spot, others, rng) is null) return null;
+        return PreflopBehaviour.Draw(others[Position.SB], PreflopSituation.FacingRaise, rng) == PreflopAction.Call ? spot : null;
     }
 }

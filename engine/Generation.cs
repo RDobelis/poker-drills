@@ -23,8 +23,8 @@ public sealed record GenerationResult(DrillFile File, IReadOnlyList<RuleReport> 
 public static class DrillGenerator
 {
     // 2: drills carry step-by-step `actions` for the table view. 3: `players` = a type and HUD for every seat.
-    // 4: `behind` = seats left to act after hero; rules can react to them.
-    public const int SchemaVersion = 4;
+    // 4: `behind` = seats left to act after hero; rules can react to them. 5: `others` = other opponents in the hand.
+    public const int SchemaVersion = 5;
     public const string IdentifyLine = "Identify";
     public const string IdentifyQuestion = "Which player type is this?";
 
@@ -94,21 +94,24 @@ public static class DrillGenerator
             // Seat the other players and let them act by type. The seating has its own random stream (one per
             // attempt), so it never changes the cards; seatings whose players would break the line are redrawn.
             var seatRng = Rng.ForLabel(options.Seed, $"seats:{rule.Id}:{attempts}");
-            if (SeatTable(template, spot, villain, types, seatRng) is not { } seating) continue;
-            spot = seating.Spot;
-            var seatTypes = seating.Types;
+            if (SeatTable(template, spot, villain, types, seatRng) is not { } seated) continue;
+            spot = seated.Spot;
+            var seatTypes = seated.Types;
             var behind = TableSeating.SeatsBehind(spot.HeroPosition, spot.Actions);
-            if (!RuleMatcher.MatchesBehind(rule, behind.Select(p => seatTypes[p].Id).ToList())) continue;
+            var others = TableSeating.OtherOpponents(spot.HeroPosition, spot.VillainPosition, spot.Actions);
+            var seating = new Seating(behind.Select(p => seatTypes[p].Id).ToList(), others.Select(p => seatTypes[p].Id).ToList());
+            if (!RuleMatcher.MatchesSeating(rule, seating)) continue;
 
-            // For rules about the players behind, who sits there is part of what makes a spot distinct.
+            // For rules about the seating, who sits behind / who else is in the hand is part of what makes a spot distinct.
             var key = SpotKey(hole, board, spot);
             if (rule.HasBehindConditions) key += "|" + string.Join(",", behind.Select(p => $"{p}:{seatTypes[p].Id}"));
+            if (rule.HasOthersConditions) key += "|in:" + string.Join(",", others.Select(p => $"{p}:{seatTypes[p].Id}"));
             if (!seenSpots.Add(key)) continue;
 
             var stats = StatSampler.SampleUnambiguous(villain, types, rng);
             var id = UniqueId($"{rule.Id}-{Rng.Fnv1a32(key):x8}", ids);
-            var players = SeatPlayers(spot, seatTypes, seating.Stats, stats);
-            drills.Add(ActionDrill(id, rule, template, stats, spot, hole, board, facts, players, behind));
+            var players = SeatPlayers(spot, seatTypes, seated.Stats, stats);
+            drills.Add(ActionDrill(id, rule, template, stats, spot, hole, board, facts, players, behind, others));
         }
 
         return (drills, attempts);
@@ -129,7 +132,7 @@ public static class DrillGenerator
         return seats;
     }
 
-    private const int MaxSeatings = 200;
+    private const int MaxSeatings = 500; // a cold-caller in the small blind is rare: ~3% of seatings fit
 
     /// <summary>
     /// Draws who sits where (types and HUD lines) and lets them act by type; redraws when somebody would break
@@ -158,15 +161,18 @@ public static class DrillGenerator
                 s.Key == spot.VillainPosition ? villainStats : otherStats[s.Key]))
             .ToList();
 
-    /// <summary>Player types of the seats left to act behind hero, recomputed from the drill's own actions.</summary>
-    public static IReadOnlyList<string> BehindTypes(Drill drill)
+    /// <summary>A drill's seating (types behind hero, types of the other opponents), recomputed from its own actions.</summary>
+    public static Seating SeatingOf(Drill drill)
     {
-        if (drill.Kind != DrillKinds.Action) return [];
+        if (drill.Kind != DrillKinds.Action) return Seating.Empty;
         var actions = drill.Actions.Select(a => new ActionStep(
-            Enum.Parse<Street>(a.Street), Enum.Parse<Position>(a.Seat), Enum.Parse<ActionKind>(a.Kind), (decimal)a.To));
-        return TableSeating.SeatsBehind(Enum.Parse<Position>(drill.HeroPosition!), actions)
-            .Select(p => drill.Players.Single(x => x.Seat == p.ToString()).Type)
-            .ToList();
+            Enum.Parse<Street>(a.Street), Enum.Parse<Position>(a.Seat), Enum.Parse<ActionKind>(a.Kind), (decimal)a.To)).ToList();
+        var hero = Enum.Parse<Position>(drill.HeroPosition!);
+        var villain = Enum.Parse<Position>(drill.VillainPosition!);
+        string TypeAt(Position p) => drill.Players.Single(x => x.Seat == p.ToString()).Type;
+        return new Seating(
+            TableSeating.SeatsBehind(hero, actions).Select(TypeAt).ToList(),
+            TableSeating.OtherOpponents(hero, villain, actions).Select(TypeAt).ToList());
     }
 
     /// <summary>
@@ -211,6 +217,7 @@ public static class DrillGenerator
                 Actions = [],
                 Players = [],
                 Behind = [],
+                Others = [],
                 HeroCards = [],
                 Board = [],
                 Question = IdentifyQuestion,
@@ -252,6 +259,8 @@ public static class DrillGenerator
         if (rule.BoardExclude != BoardFlags.None) parts.Add($"board not {string.Join(", ", BoardAnalyzer.Names(rule.BoardExclude))}");
         if (rule.BehindRequire.Count > 0) parts.Add($"left to act behind you: {string.Join(" and ", rule.BehindRequire)}");
         if (rule.BehindExclude.Count > 0) parts.Add($"no {string.Join(" or ", rule.BehindExclude)} left to act behind you");
+        if (rule.OthersRequire.Count > 0) parts.Add($"also in the hand: {string.Join(" and ", rule.OthersRequire)}");
+        if (rule.OthersExclude.Count > 0) parts.Add($"no {string.Join(" or ", rule.OthersExclude)} also in the hand");
         return string.Join("; ", parts);
     }
 
@@ -260,10 +269,11 @@ public static class DrillGenerator
 
     private static Drill ActionDrill(string id, Rule rule, LineTemplate template, StatLine stats, Spot spot,
         IReadOnlyList<Card> hole, IReadOnlyList<Card> board, SpotFacts facts, IReadOnlyList<SeatPlayer> players,
-        IReadOnlyList<Position> behind) => new()
+        IReadOnlyList<Position> behind, IReadOnlyList<Position> others) => new()
     {
         Players = players,
         Behind = behind.Select(p => p.ToString()).ToList(),
+        Others = others.Select(p => p.ToString()).ToList(),
         Id = id,
         RuleId = rule.Id,
         Kind = DrillKinds.Action,
@@ -334,12 +344,12 @@ public static class ConflictChecker
             var hole = drill.HeroCards.Select(Card.Parse).ToArray();
             var board = drill.Board.Select(Card.Parse).ToArray();
             var facts = SpotFacts.Analyze(hole, board, options);
-            var behindTypes = DrillGenerator.BehindTypes(drill);
+            var seating = DrillGenerator.SeatingOf(drill);
 
             foreach (var other in candidates)
             {
                 if (other.Id == drill.RuleId || other.Correct == drill.Correct) continue;
-                if (!RuleMatcher.Matches(other, drill.VillainType, line, facts, behindTypes)) continue;
+                if (!RuleMatcher.Matches(other, drill.VillainType, line, facts, seating)) continue;
 
                 var key = (drill.RuleId, other.Id);
                 found[key] = found.TryGetValue(key, out var f)
